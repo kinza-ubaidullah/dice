@@ -247,11 +247,11 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
          <div className="relative w-full max-w-[400px] z-10 p-4 rounded bg-[#8B5A2B] shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-b-8 border-r-8 border-[#5C3A1E]">
              
              {/* Rule Badge */}
-             <div className="absolute -top-6 left-0 w-full flex justify-center">
+             {/* <div className="absolute -top-6 left-0 w-full flex justify-center">
                  <div className="bg-red-500/20 border border-red-500/50 text-red-400 px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest flex items-center gap-1">
                      <AlertTriangle size={10} /> #1 IS HOUSE (AUTO LOSS)
                  </div>
-             </div>
+             </div> */}
 
              {/* The Grid */}
              <div className="grid grid-cols-3 grid-rows-2 gap-2 bg-black border-4 border-black aspect-[4/3]">
