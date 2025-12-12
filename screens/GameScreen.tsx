@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, GameRecord, Screen } from '../types';
 import Dice from '../components/Dice';
 import NeonButton from '../components/NeonButton';
-import { ChevronLeft, RefreshCw, Plus, Minus, ArrowUpCircle, ArrowDownCircle, Volume2, VolumeX, Percent, Users, Search } from 'lucide-react';
+import { ChevronLeft, RefreshCw, Plus, Minus, ArrowUpCircle, ArrowDownCircle, Volume2, VolumeX, Percent, Users, Search, Wallet, WifiOff } from 'lucide-react';
 import { audioManager } from '../utils/audio';
+import { gameApi } from '../utils/api';
 
 interface GameScreenProps {
   user: User;
@@ -16,6 +17,7 @@ interface GameScreenProps {
   addHistory: (record: GameRecord) => void;
   setScreen: (screen: Screen) => void;
   commissionRate: number;
+  isOnline?: boolean;
 }
 
 // RULES IMPLEMENTATION:
@@ -26,10 +28,11 @@ const isDuelMode = (count: number) => count >= 3;
 const BOT_NAMES = ['NeonKing', 'SpeedRoller', 'LuckyStrike', 'CyberWolf', 'DiceMaster', 'Viper', 'Ghost', 'ZeroCool'];
 
 const GameScreen: React.FC<GameScreenProps> = ({ 
-    user, setUser, betAmount, setBetAmount, playerCount, setPlayerCount, addHistory, setScreen, commissionRate 
+    user, setUser, betAmount, setBetAmount, playerCount, setPlayerCount, addHistory, setScreen, commissionRate, isOnline = true 
 }) => {
   const [gameState, setGameState] = useState<'READY' | 'MATCHING' | 'ROLLING' | 'RESULT'>('READY');
   const [isMuted, setIsMuted] = useState(audioManager.isMuted());
+  const [showLowBalanceModal, setShowLowBalanceModal] = useState(false);
   const isGameActive = gameState !== 'READY';
   
   const [myDice, setMyDice] = useState<[number, number]>([1, 1]);
@@ -47,13 +50,38 @@ const GameScreen: React.FC<GameScreenProps> = ({
     feePaid: number;
   }>({ left: null, right: null, netAmount: 0, feePaid: 0 });
 
-  // Bet Calculation: 
-  // If Duel Mode (3+ players), user bets against Left AND Right (2x Bet).
-  // Otherwise, user bets against Left only (1x Bet).
-  const totalBetRequired = isDuelMode(playerCount) ? betAmount * 2 : betAmount;
+  // Refs for animation
+  const animationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Bet Calculation Logic
+  const activeDuels = isDuelMode(playerCount) ? 2 : 1;
+  const totalBetRequired = betAmount * activeDuels;
+
+  const MIN_BET = 500;
+
+  useEffect(() => {
+    return () => {
+        if (animationInterval.current) clearInterval(animationInterval.current);
+    };
+  }, []);
 
   const handleBetChange = (delta: number) => {
-    setBetAmount(Math.max(100, betAmount + delta));
+    setBetAmount(Math.max(MIN_BET, betAmount + delta));
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = parseInt(e.target.value);
+      if (!isNaN(val)) {
+          setBetAmount(val);
+      } else {
+          setBetAmount(0); // Intermediate state while typing
+      }
+  };
+
+  const handleInputBlur = () => {
+      if (betAmount < MIN_BET) {
+          setBetAmount(MIN_BET);
+      }
   };
 
   const toggleMute = () => {
@@ -62,12 +90,17 @@ const GameScreen: React.FC<GameScreenProps> = ({
   };
 
   const handleStartGame = () => {
-    // 1. Strict Deposit Rule
-    if (user.balance < totalBetRequired) {
+    // 1. Strict Deposit Rule (Use Wallet.Balance)
+    if (user.wallet.balance < totalBetRequired) {
       audioManager.play('LOSS');
-      alert("Insufficient funds! You must deposit to start the game.");
-      setScreen(Screen.WALLET);
+      setShowLowBalanceModal(true);
       return;
+    }
+
+    if (betAmount < MIN_BET) {
+        alert(`Minimum bet is ${MIN_BET} CFA`);
+        setBetAmount(MIN_BET);
+        return;
     }
 
     // Play Click Sound
@@ -81,58 +114,137 @@ const GameScreen: React.FC<GameScreenProps> = ({
     setLeftOpponent(availableBots[0]);
     if (isDuelMode(playerCount)) setRightOpponent(availableBots[1]);
 
-    // Simulate Network Matchmaking Delay (1.5s)
+    // Simulate Network Matchmaking Delay
     setTimeout(() => {
-        startRolling();
+        executeGameLogic();
     }, 1500);
   };
 
-  const startRolling = () => {
+  const executeGameLogic = async () => {
     setGameState('ROLLING');
     audioManager.play('ROLL');
     
     // Deduct total bet immediately (Escrow)
-    setUser(prev => ({ ...prev, balance: prev.balance - totalBetRequired }));
+    setUser(prev => ({ 
+        ...prev, 
+        wallet: {
+            ...prev.wallet,
+            balance: prev.wallet.balance - totalBetRequired
+        }
+    }));
 
-    let rolls = 0;
-    const maxRolls = 20;
-    
-    const interval = setInterval(() => {
+    // Start Visual Rolling Animation (Loops until API returns)
+    animationInterval.current = setInterval(() => {
       setMyDice([Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1]);
       setLeftDice([Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1]);
       if (isDuelMode(playerCount)) {
           setRightDice([Math.floor(Math.random() * 6) + 1, Math.floor(Math.random() * 6) + 1]);
       }
-      rolls++;
-
-      if (rolls >= maxRolls) {
-        clearInterval(interval);
-        finalizeGame();
-      }
     }, 100);
-  };
 
-  const finalizeGame = () => {
-    // 1. Roll Final Dice
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
-    setMyDice([d1, d2]);
-    const myTotal = d1 + d2;
+    // DETERMINE RESULTS
+    let myTotal = 0;
+    let leftTotal = 0;
+    let rightTotal = 0;
 
-    const l1 = Math.floor(Math.random() * 6) + 1;
-    const l2 = Math.floor(Math.random() * 6) + 1;
-    setLeftDice([l1, l2]);
-    const leftTotal = l1 + l2;
+    if (isOnline) {
+        // --- ONLINE API MODE ---
+        try {
+            // Construct Payload for API
+            // Note: The API takes an array of players. Since we don't have real matchmaking yet,
+            // we send the user + dummy bots to the API, so the API calculates dice for everyone.
+            const playersPayload = [
+                { uid: user.id, displayName: user.name }, // Me
+                { uid: 'bot-1', displayName: leftOpponent } // Bot 1
+            ];
+            if (isDuelMode(playerCount)) {
+                playersPayload.push({ uid: 'bot-2', displayName: rightOpponent }); // Bot 2
+            }
 
-    let r1 = 1, r2 = 1, rightTotal = 0;
-    if (isDuelMode(playerCount)) {
-        r1 = Math.floor(Math.random() * 6) + 1;
-        r2 = Math.floor(Math.random() * 6) + 1;
-        setRightDice([r1, r2]);
-        rightTotal = r1 + r2;
+            const apiResponse = await gameApi.rollDice(playersPayload);
+            
+            // Wait a minimum time for animation
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            if (Array.isArray(apiResponse)) {
+                // Extract My Result
+                const myResult = apiResponse.find((r: any) => r.uid === user.id);
+                const myRoll = myResult ? myResult.rollDiceResult : 2;
+                // Split single API result into 2 dice for visuals (e.g. 7 -> 3+4)
+                setMyDice(splitDice(myRoll));
+                myTotal = myRoll;
+
+                // Extract Left Bot Result
+                const leftResult = apiResponse.find((r: any) => r.uid === 'bot-1');
+                const leftRoll = leftResult ? leftResult.rollDiceResult : 2;
+                setLeftDice(splitDice(leftRoll));
+                leftTotal = leftRoll;
+
+                // Extract Right Bot Result
+                if (isDuelMode(playerCount)) {
+                    const rightResult = apiResponse.find((r: any) => r.uid === 'bot-2');
+                    const rightRoll = rightResult ? rightResult.rollDiceResult : 2;
+                    setRightDice(splitDice(rightRoll));
+                    rightTotal = rightRoll;
+                }
+            } else {
+                throw new Error("Invalid API format");
+            }
+
+        } catch (e) {
+            console.error("Online Play Failed", e);
+            alert("Connection lost. Switching to offline mode for this roll.");
+            // Fallback to local
+            ({ myTotal, leftTotal, rightTotal } = runLocalSimulation());
+        }
+    } else {
+        // --- OFFLINE DEMO MODE ---
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        ({ myTotal, leftTotal, rightTotal } = runLocalSimulation());
     }
 
-    // 2. Determine Winners & Commission
+    // Stop Animation
+    if (animationInterval.current) clearInterval(animationInterval.current);
+    
+    // Calculate Financials & State
+    calculateAndFinalize(myTotal, leftTotal, rightTotal);
+  };
+
+  const splitDice = (total: number): [number, number] => {
+      // Helper to make visuals match the total
+      if (total <= 2) return [1, 1];
+      if (total >= 12) return [6, 6];
+      const d1 = Math.floor(total / 2);
+      const d2 = total - d1;
+      return [d1, d2];
+  };
+
+  const runLocalSimulation = () => {
+      const myD1 = Math.floor(Math.random() * 6) + 1;
+      const myD2 = Math.floor(Math.random() * 6) + 1;
+      setMyDice([myD1, myD2]);
+      
+      const l1 = Math.floor(Math.random() * 6) + 1;
+      const l2 = Math.floor(Math.random() * 6) + 1;
+      setLeftDice([l1, l2]);
+
+      let r1 = 1, r2 = 1, rightTotal = 0;
+      if (isDuelMode(playerCount)) {
+          r1 = Math.floor(Math.random() * 6) + 1;
+          r2 = Math.floor(Math.random() * 6) + 1;
+          setRightDice([r1, r2]);
+          rightTotal = r1 + r2;
+      }
+
+      return {
+          myTotal: myD1 + myD2,
+          leftTotal: l1 + l2,
+          rightTotal
+      };
+  };
+
+  const calculateAndFinalize = (myTotal: number, leftTotal: number, rightTotal: number) => {
+    // Determine Winners & Commission
     let grossWinnings = 0;
     let totalFee = 0;
     let leftResult: 'WIN' | 'LOSS' | 'DRAW' = 'LOSS';
@@ -169,15 +281,21 @@ const GameScreen: React.FC<GameScreenProps> = ({
         }
     }
 
-    // 3. Update Balance
-    setUser(prev => ({ ...prev, balance: prev.balance + grossWinnings }));
+    // Update Balance
+    setUser(prev => ({ 
+        ...prev, 
+        wallet: {
+            ...prev.wallet,
+            balance: prev.wallet.balance + grossWinnings
+        }
+    }));
 
-    // 4. Calculate Net Result (Total Payout - Total Initial Bet)
+    // Calculate Net Result (Total Payout - Total Initial Bet)
     const netWin = grossWinnings - totalBetRequired;
     setDuelResults({ left: leftResult, right: rightResult, netAmount: netWin, feePaid: totalFee });
     setGameState('RESULT');
 
-    // 5. Play Sound Result
+    // Play Sound Result
     if (netWin > 0) {
         audioManager.play('WIN');
     } else if (netWin < 0) {
@@ -230,14 +348,17 @@ const GameScreen: React.FC<GameScreenProps> = ({
           <ChevronLeft size={24} />
         </button>
         <div className="flex flex-col items-center">
-             <span className="text-[10px] text-textMuted uppercase tracking-widest font-bold">Total Bet</span>
+             <span className="text-[10px] text-textMuted uppercase tracking-widest font-bold">Total Wager</span>
              <span className="font-digital text-neon text-lg font-bold tracking-wider drop-shadow-md leading-none">
                 {totalBetRequired.toLocaleString()}
              </span>
         </div>
-        <button onClick={toggleMute} className="w-8 h-8 flex items-center justify-center text-textMuted hover:text-neon transition-colors">
-            {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-        </button>
+        <div className="flex items-center gap-2">
+            {!isOnline && <WifiOff size={16} className="text-red-500" title="Offline Mode" />}
+            <button onClick={toggleMute} className="w-8 h-8 flex items-center justify-center text-textMuted hover:text-neon transition-colors">
+                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+            </button>
+        </div>
       </div>
 
       {/* Main Game Area */}
@@ -328,21 +449,31 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
                 {/* Bet Control */}
                 <div className="flex flex-col gap-1 sm:gap-2 items-end">
-                    <span className="text-[9px] sm:text-[10px] text-textMuted uppercase tracking-widest font-bold mr-1">Bet (CFA)</span>
-                    <div className="flex items-center gap-1 sm:gap-2 bg-panel border border-gray-700 rounded-lg p-1">
-                        <button 
-                            onClick={() => handleBetChange(-100)}
-                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-black/50 text-neon flex items-center justify-center hover:bg-gray-800 active:scale-95"
-                        >
-                            <Minus size={16} />
-                        </button>
-                        <span className="font-digital text-white font-bold min-w-[60px] text-center text-base sm:text-lg">{betAmount}</span>
+                    <span className="text-[9px] sm:text-[10px] text-textMuted uppercase tracking-widest font-bold mr-1">Bet Amount (CFA)</span>
+                    <div className="flex flex-col items-end">
+                        <div className="flex items-center gap-1 sm:gap-2 bg-panel border border-gray-700 rounded-lg p-1">
                             <button 
-                            onClick={() => handleBetChange(100)}
-                            className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-black/50 text-neon flex items-center justify-center hover:bg-gray-800 active:scale-95"
-                        >
-                            <Plus size={16} />
-                        </button>
+                                onClick={() => handleBetChange(-100)}
+                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-black/50 text-neon flex items-center justify-center hover:bg-gray-800 active:scale-95"
+                            >
+                                <Minus size={16} />
+                            </button>
+                            
+                            <input 
+                                type="number" 
+                                value={betAmount} 
+                                onChange={handleInputChange}
+                                onBlur={handleInputBlur}
+                                className="bg-transparent text-white font-digital font-bold text-center text-base sm:text-lg w-[80px] focus:outline-none border-b border-transparent focus:border-neon transition-colors"
+                            />
+
+                            <button 
+                                onClick={() => handleBetChange(100)}
+                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-md bg-black/50 text-neon flex items-center justify-center hover:bg-gray-800 active:scale-95"
+                            >
+                                <Plus size={16} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -400,6 +531,37 @@ const GameScreen: React.FC<GameScreenProps> = ({
             )}
         </div>
       </div>
+
+      {/* INSUFFICIENT FUNDS MODAL */}
+      {showLowBalanceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-panel border border-danger/50 p-6 rounded-2xl w-full max-w-sm text-center shadow-[0_0_30px_rgba(255,76,76,0.2)]">
+                <div className="w-16 h-16 bg-danger/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-danger">
+                    <Wallet size={32} className="text-danger" />
+                </div>
+                <h3 className="text-white font-title text-xl mb-2">Insufficient Funds</h3>
+                <p className="text-gray-400 text-sm mb-6">
+                    You need at least <span className="text-white font-bold">{totalBetRequired.toLocaleString()} CFA</span> to roll.
+                    <br/>Your Balance: <span className="text-danger font-digital">{user.wallet.balance.toLocaleString()} CFA</span>
+                </p>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={() => setShowLowBalanceModal(false)}
+                        className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-400 hover:text-white transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <NeonButton 
+                        variant="primary" 
+                        className="flex-1"
+                        onClick={() => setScreen(Screen.WALLET)}
+                    >
+                        DEPOSIT NOW
+                    </NeonButton>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };

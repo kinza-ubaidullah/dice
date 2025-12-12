@@ -5,33 +5,33 @@ import NeonButton from '../components/NeonButton';
 import { Lock, User as UserIcon, Dices, AlertCircle, X, ChevronRight, ServerOff } from 'lucide-react';
 
 interface LoginScreenProps {
-  onLogin: (email: string, pass: string) => boolean;
+  onLogin: (email: string, pass: string) => Promise<boolean>;
   setScreen: (screen: Screen) => void;
-  registeredUsers: User[];
+  language?: string;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen, registeredUsers }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showForgotPass, setShowForgotPass] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isValid = identifier.trim().length > 0 && password.trim().length > 0;
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!isValid) return;
     setError(null);
+    setIsLoading(true);
 
-    const success = onLogin(identifier, password);
-    if (!success) {
-      setError("Invalid username/email or password.");
+    try {
+      await onLogin(identifier, password);
+      // Success handled by parent (state update -> re-render)
+    } catch (err: any) {
+      setError(err.message || "Invalid username/email or password.");
+    } finally {
+      setIsLoading(false);
     }
-  };
-
-  const handleQuickLogin = (u: User) => {
-    setIdentifier(u.name); // Prefer username for quick login
-    const passInput = document.getElementById('login-password');
-    if (passInput) passInput.focus();
   };
 
   const ForgotPasswordModal = () => (
@@ -100,29 +100,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen, registere
             <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
             <p className="text-textMuted mb-8">Enter your credentials to access your wallet.</p>
 
-            {/* Quick Access */}
-            {registeredUsers.length > 0 && (
-                <div className="mb-8">
-                    <p className="text-xs font-bold text-textMuted uppercase mb-3 ml-1">Quick Access (Local Only)</p>
-                    <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
-                        {registeredUsers.map(u => (
-                            <button 
-                                key={u.id}
-                                onClick={() => handleQuickLogin(u)}
-                                className="flex flex-col items-center gap-2 min-w-[70px] group flex-shrink-0"
-                            >
-                                <div className={`w-14 h-14 rounded-full p-[2px] transition-all ${identifier === u.name ? 'bg-neon shadow-[0_0_15px_rgba(102,252,241,0.5)]' : 'bg-gray-700 group-hover:bg-gray-500'}`}>
-                                    <img src={u.avatarUrl} alt={u.name} className="w-full h-full rounded-full bg-black object-cover" />
-                                </div>
-                                <span className={`text-[10px] font-bold truncate w-full text-center ${identifier === u.name ? 'text-neon' : 'text-gray-500 group-hover:text-white'}`}>
-                                    {u.name.split(' ')[0]}
-                                </span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {error && (
               <div className="mb-6 p-4 bg-danger/10 border border-danger/50 rounded-xl flex items-center gap-3 text-danger animate-fade-in">
                 <AlertCircle size={20} />
@@ -161,8 +138,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen, registere
               </div>
 
               <div className="pt-4">
-                  <NeonButton fullWidth onClick={handleLogin} disabled={!isValid}>
-                      LOGIN
+                  <NeonButton fullWidth onClick={handleLogin} disabled={!isValid || isLoading}>
+                      {isLoading ? 'LOGGING IN...' : 'LOGIN'}
                   </NeonButton>
               </div>
 
@@ -174,18 +151,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen, registere
               </div>
             </div>
 
-            {/* Offline/Local Disclaimer */}
-            <div className="mt-8 mb-4 p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-lg flex items-start gap-3">
-                <ServerOff size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-gray-500 leading-relaxed">
-                    <strong className="text-yellow-500">Local Demo Mode:</strong> Accounts are saved to your browser's local storage. They will not sync across different devices or browsers. To access your account, please use the same device you registered on.
-                </p>
-            </div>
-
-            <div className="mt-4 text-center border-t border-gray-800 pt-6">
+            <div className="mt-8 text-center border-t border-gray-800 pt-6">
                 <p className="text-[10px] text-gray-600">
                     By logging in, you agree to our Terms of Service.
-                    <br/> (Hint: Type 'admin' / 'admin' for Admin Panel)
                 </p>
             </div>
           </div>

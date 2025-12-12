@@ -1,5 +1,5 @@
 
-export type SoundType = 'ROLL' | 'WIN' | 'LOSS' | 'CLICK';
+export type SoundType = 'ROLL' | 'WIN' | 'LOSS' | 'CLICK' | 'SUCCESS';
 
 class AudioManager {
   private context: AudioContext | null = null;
@@ -7,11 +7,41 @@ class AudioManager {
   private muted: boolean = false;
 
   constructor() {
-    // Lazy initialization handled in play() to comply with autoplay policies
+    // Load mute state from storage
+    try {
+        const saved = localStorage.getItem('app_muted');
+        this.muted = saved === 'true';
+    } catch(e) { 
+        this.muted = false; 
+    }
+
+    // Add global listeners to unlock audio context on first interaction
+    if (typeof window !== 'undefined') {
+        const unlock = () => {
+             this.initContext();
+             // Remove listeners after first interaction
+             window.removeEventListener('click', unlock);
+             window.removeEventListener('keydown', unlock);
+             window.removeEventListener('touchstart', unlock);
+        };
+        window.addEventListener('click', unlock);
+        window.addEventListener('keydown', unlock);
+        window.addEventListener('touchstart', unlock);
+    }
   }
 
-  private init() {
-    if (this.context) return;
+  public async initContext() {
+    if (this.context) {
+        // If context exists but is suspended (Autoplay Policy), try to resume
+        if (this.context.state === 'suspended') {
+            try {
+                await this.context.resume();
+            } catch (e) {
+                // Resume might fail if called without user gesture, ignoring safe error
+            }
+        }
+        return;
+    }
     
     try {
       // Support standard and webkit prefixed AudioContext for broader browser support
@@ -21,27 +51,32 @@ class AudioManager {
         this.context = new AudioContextClass();
         this.masterGain = this.context.createGain();
         this.masterGain.connect(this.context.destination);
-        this.masterGain.gain.value = 0.3; // Default volume (30%)
+        this.masterGain.gain.value = 0.5;
       }
     } catch (e) {
       console.error("Audio initialization failed", e);
     }
   }
 
-  private ensureContext() {
-    this.init();
-    // Resume context if suspended (browser autoplay policy)
-    if (this.context && this.context.state === 'suspended') {
-      this.context.resume().catch(() => {});
-    }
+  // Explicitly resume (can be called from UI buttons to force unlock)
+  public resume() {
+      this.initContext();
   }
 
-  play(sound: SoundType) {
+  public async play(sound: SoundType) {
     if (this.muted) return;
     
-    this.ensureContext();
-    if (!this.context || !this.masterGain) return;
+    // Ensure context is initialized and active
+    await this.initContext();
 
+    if (!this.context || !this.masterGain) return;
+    
+    // Double check state
+    if (this.context.state === 'suspended') {
+        try { await this.context.resume(); } catch(e) { return; }
+    }
+
+    // Use safe current time
     const t = this.context.currentTime;
 
     switch (sound) {
@@ -51,13 +86,13 @@ class AudioManager {
         break;
       case 'ROLL':
         // Simulate dice shaking with scattered collision noises
-        for(let i = 0; i < 10; i++) {
-            const timeOffset = Math.random() * 1.5; // Spread over 1.5 seconds
+        for(let i = 0; i < 8; i++) {
+            const timeOffset = Math.random() * 0.8; 
             this.playNoise(0.04, t + timeOffset);
         }
         break;
       case 'WIN':
-        // Victory Fanfare (Major Arpeggio)
+        // Victory Fanfare
         this.playTone(523.25, 'triangle', 0.1, t);       // C5
         this.playTone(659.25, 'triangle', 0.1, t + 0.15); // E5
         this.playTone(783.99, 'triangle', 0.1, t + 0.30); // G5
@@ -66,6 +101,12 @@ class AudioManager {
       case 'LOSS':
         // Defeat Sound (Descending Slide)
         this.playSlide(250, 50, 'sawtooth', 0.6, t);
+        break;
+      case 'SUCCESS':
+        // Success Chime
+        this.playTone(880, 'sine', 0.1, t);
+        this.playTone(1108, 'sine', 0.1, t + 0.1);
+        this.playTone(1318, 'sine', 0.4, t + 0.2);
         break;
     }
   }
@@ -141,13 +182,15 @@ class AudioManager {
 
   toggleMute() {
     this.muted = !this.muted;
-    // Suspend context when muted to save battery/resources
+    try {
+        localStorage.setItem('app_muted', String(this.muted));
+    } catch(e) {}
+
+    // Suspend context when muted to save battery
     if (this.muted && this.context && this.context.state === 'running') {
         this.context.suspend();
-    } 
-    // Resume when unmuted
-    else if (!this.muted && this.context && this.context.state === 'suspended') {
-        this.context.resume();
+    } else if (!this.muted) {
+        this.resume();
     }
     return this.muted;
   }

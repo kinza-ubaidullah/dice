@@ -10,16 +10,30 @@ import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import AdminDashboard from './screens/AdminDashboard';
 import ProfileScreen from './screens/ProfileScreen';
+import DiceTableScreen from './screens/DiceTableScreen';
 import { Dices, Loader2 } from 'lucide-react';
+import { authApi } from './utils/api';
+import { useSocket } from './hooks/useSocket'; // Import Socket Hook
+
+// Default Data Cleared for Production/API-First Approach
+const DEFAULT_USERS: User[] = [];
 
 const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true); // App Loader State
   const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.LOGIN);
-  const [betAmount, setBetAmount] = useState<number>(500);
+  const [returnScreen, setReturnScreen] = useState<Screen>(Screen.HOME); // Track where to return after Wallet
+  const [betAmount, setBetAmount] = useState<number>(500); // Default to 500 Minimum
   const [playerCount, setPlayerCount] = useState<number>(2);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   
+  // NETWORK STATE
+  // Defaults to navigator.onLine, but can be manually toggled
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+
+  // Socket Integration (Mocked to prevent errors)
+  const { trackLiveUsers } = useSocket();
+
   // Global Settings (Shared between Admin and Game)
   const [commissionRate, setCommissionRate] = useState<number>(5); // Default 5%
   
@@ -28,43 +42,31 @@ const App: React.FC = () => {
       return localStorage.getItem('app_language') || 'English';
   });
 
-  // --- MOCK DATABASE START ---
-  // Initial Mock Users (Admin & Demo User) with LocalStorage Persistence
+  // Local state for registered users (Persistent Database)
+  // UPDATED KEY to 'app_users_v3' to clear old cached admins
   const [registeredUsers, setRegisteredUsers] = useState<User[]>(() => {
-    try {
-      const savedUsers = localStorage.getItem('app_users');
-      if (savedUsers) {
-        return JSON.parse(savedUsers);
+      try {
+          const saved = localStorage.getItem('app_users_v3');
+          if (saved) {
+              return JSON.parse(saved);
+          }
+          return DEFAULT_USERS;
+      } catch {
+          return DEFAULT_USERS;
       }
-    } catch (e) {
-      console.error("Failed to parse users from local storage", e);
-    }
-    
-    // Default Data if no local storage
-    return [
-      {
-        id: 'admin-user-id',
-        name: 'Admin User',
-        email: 'admin',
-        password: 'admin',
-        balance: 1000000,
-        avatarUrl: 'https://ui-avatars.com/api/?name=Admin&background=random',
-        role: 'ADMIN'
-      },
-      {
-        id: 'demo-user-id',
-        name: 'HHH HHH',
-        email: 'user', 
-        password: 'user',
-        balance: 50.00,
-        avatarUrl: 'https://picsum.photos/100/100',
-        role: 'USER'
-      }
-    ];
   });
 
-  const [currentUser, setCurrentUser] = useState<User>(registeredUsers[1]); 
-  // --- MOCK DATABASE END ---
+  // Current Logged In User
+  const [currentUser, setCurrentUser] = useState<User>({
+      id: '',
+      name: '',
+      email: '',
+      wallet: { balance: 0, totalDeposited: 0, totalWithdrawn: 0 },
+      avatarUrl: '',
+      role: 'USER',
+      stats: { gamesPlayed: 0, gamesWon: 0, totalWagered: 0, totalWon: 0 },
+      withdrawalLimits: { countThisWeek: 0, lastWithdrawalDate: new Date().toISOString() }
+  });
 
   const [history, setHistory] = useState<GameRecord[]>([]);
   
@@ -78,7 +80,9 @@ const App: React.FC = () => {
     }
   });
 
-  // SPLASH SCREEN LOADER EFFECT
+  // --- EFFECTS ---
+
+  // 1. Splash Screen
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
@@ -86,29 +90,67 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // PERSISTENCE EFFECT 1: Save Users to LocalStorage whenever they change
+  // 2. Network Listener
   useEffect(() => {
-    localStorage.setItem('app_users', JSON.stringify(registeredUsers));
-  }, [registeredUsers]);
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
 
-  // PERSISTENCE EFFECT 2: Sync Current User changes (balance, profile) back to Registered Users list
-  useEffect(() => {
-    if (isAuthenticated && currentUser) {
-      setRegisteredUsers(prevUsers => 
-        prevUsers.map(user => user.id === currentUser.id ? currentUser : user)
-      );
-    }
-  }, [currentUser, isAuthenticated]);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
 
-  // PERSISTENCE EFFECT 3: Save Transactions
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+      };
+  }, []);
+
+  // 3. Persist Transactions
   useEffect(() => {
       localStorage.setItem('app_transactions', JSON.stringify(transactions));
   }, [transactions]);
 
-  // PERSISTENCE EFFECT 4: Save Language
+  // 4. Persist Language
   useEffect(() => {
       localStorage.setItem('app_language', language);
   }, [language]);
+
+  // 5. Persist Users (The Database)
+  useEffect(() => {
+      localStorage.setItem('app_users_v3', JSON.stringify(registeredUsers));
+  }, [registeredUsers]);
+
+  // 6. Sync Active User State to Database (Critical for Wallet Persistence)
+  useEffect(() => {
+      if (isAuthenticated && currentUser && currentUser.id) {
+          setRegisteredUsers(prevUsers => {
+              const index = prevUsers.findIndex(u => u.id === currentUser.id);
+              // Only update if the user exists and data has changed
+              if (index > -1) {
+                  const dbUser = prevUsers[index];
+                  // Simple equality check to avoid infinite loops
+                  if (JSON.stringify(dbUser) !== JSON.stringify(currentUser)) {
+                      const newUsers = [...prevUsers];
+                      newUsers[index] = currentUser;
+                      return newUsers;
+                  }
+              }
+              return prevUsers;
+          });
+      }
+  }, [currentUser, isAuthenticated]);
+  
+  // 7. Presence Tracking (Mocked)
+  useEffect(() => {
+      if (isAuthenticated && currentUser.id && isOnline) {
+          trackLiveUsers(currentUser.id, currentUser.name);
+          
+          const interval = setInterval(() => {
+              trackLiveUsers(currentUser.id, currentUser.name);
+          }, 30000);
+          
+          return () => clearInterval(interval);
+      }
+  }, [isAuthenticated, currentUser.id, currentUser.name, trackLiveUsers, isOnline]);
 
 
   const addHistory = (record: GameRecord) => {
@@ -119,63 +161,144 @@ const App: React.FC = () => {
       setTransactions(prev => [tx, ...prev]);
   };
 
-  // Handle Registration
-  const handleRegister = (newUser: User) => {
-    // Check if user already exists
-    const exists = registeredUsers.find(u => u.email === newUser.email);
-    if (exists) {
-      alert("User with this email already exists!");
-      return false;
-    }
+  /**
+   * Wrapper for screen navigation to handle history
+   */
+  const handleSetScreen = (screen: Screen) => {
+      // If we are navigating TO the wallet, remember where we came from
+      if (screen === Screen.WALLET) {
+          setReturnScreen(currentScreen);
+      }
+      setCurrentScreen(screen);
+  };
 
-    // Give 1000 CFA welcome bonus
-    const userWithBonus = { 
-      ...newUser, 
-      balance: 1000, 
-      avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random` 
-    };
+  /**
+   * Helper to Map API User Response to Frontend User Type
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapApiUserToState = (apiData: any): User => {
+      return {
+          id: apiData.uid || apiData.id || Date.now().toString(),
+          name: apiData.displayName || apiData.name || 'Unknown User',
+          email: apiData.email || '',
+          phone: apiData.phone || apiData.phoneNumber || '',
+          password: apiData.password, // Keep password for local auth check if needed later
+          role: apiData.role ? (apiData.role.toUpperCase() as 'USER' | 'ADMIN') : 'USER',
+          avatarUrl: apiData.photoURL || `https://ui-avatars.com/api/?name=${apiData.displayName || 'User'}&background=random`,
+          wallet: apiData.wallet || {
+              balance: apiData.balance || 0, 
+              totalDeposited: 0,
+              totalWithdrawn: 0
+          },
+          stats: apiData.stats || {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              totalWagered: 0,
+              totalWon: 0
+          },
+          withdrawalLimits: apiData.withdrawalLimits || {
+              countThisWeek: 0,
+              lastWithdrawalDate: new Date().toISOString()
+          },
+          isBlocked: apiData.isBlocked || false
+      };
+  };
 
-    setRegisteredUsers(prev => [...prev, userWithBonus]); 
-    alert("Registration Successful! Please Login.");
-    setCurrentScreen(Screen.LOGIN);
+  // Handle Registration Success
+  const handleRegisterSuccess = async (partialUser: Partial<User>) => {
+    const newUser = mapApiUserToState(partialUser);
+    
+    // Save to local database for cache
+    setRegisteredUsers(prev => [...prev, newUser]);
+    
+    setCurrentUser(newUser);
+    setIsAuthenticated(true);
+    setIsAdmin(newUser.role === 'ADMIN');
+    handleSetScreen(newUser.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+    
     return true;
   };
 
   // Handle Login
-  const handleLogin = (identifier: string, pass: string) => {
-    // Check against Email, Phone, OR Name (Username)
-    const foundUser = registeredUsers.find(u => 
-      (u.email === identifier || u.phone === identifier || u.name === identifier) && u.password === pass
-    );
+  const handleLogin = async (identifier: string, pass: string): Promise<boolean> => {
+    try {
+        // 1. API Login First (Priority if Online)
+        if (isOnline) {
+            try {
+                // authApi.login expects phone number usually, but we pass identifier
+                const response = await authApi.login(identifier, pass);
+                const userData = response.data || response;
+                
+                if (userData) {
+                    const mappedUser = mapApiUserToState(userData);
 
-    if (foundUser) {
-      setCurrentUser(foundUser);
-      setIsAuthenticated(true);
-      
-      if (foundUser.role === 'ADMIN' || foundUser.email === 'admin') {
-        setIsAdmin(true);
-        setCurrentScreen(Screen.ADMIN);
-      } else {
-        setIsAdmin(false);
-        setCurrentScreen(Screen.HOME);
-      }
-      return true;
-    } else {
-      alert("Invalid Credentials! Please check username/email/password.");
-      return false;
+                    if (mappedUser.isBlocked) {
+                        throw new Error("Account is blocked. Contact support.");
+                    }
+
+                    // Update local cache
+                    setRegisteredUsers(prev => {
+                        const exists = prev.findIndex(u => u.id === mappedUser.id);
+                        if (exists > -1) {
+                            const newArr = [...prev];
+                            newArr[exists] = mappedUser; // Update existing
+                            return newArr;
+                        }
+                        return [...prev, mappedUser]; // Add new
+                    });
+
+                    setCurrentUser(mappedUser);
+                    setIsAuthenticated(true);
+                    setIsAdmin(mappedUser.role === 'ADMIN');
+                    handleSetScreen(mappedUser.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+                    return true;
+                }
+            } catch (e: any) {
+                 console.warn("API Login failed:", e.message);
+                 // If API explicitly fails (401/403), do not fallback to local unless network error
+                 if (e.message.includes('Invalid') || e.message.includes('password')) {
+                     throw e;
+                 }
+            }
+        }
+
+        // 2. Fallback to Local Storage (Only if Offline or API failed due to connection)
+        const localUser = registeredUsers.find(u => 
+            (u.name === identifier || u.email === identifier || u.phone === identifier) &&
+            (u.password === pass)
+        );
+
+        if (localUser) {
+            if (localUser.isBlocked) throw new Error("Account is blocked.");
+            
+            console.log("Logged in via Local Storage (Offline Mode)");
+            setCurrentUser(localUser);
+            setIsAuthenticated(true);
+            setIsAdmin(localUser.role === 'ADMIN');
+            handleSetScreen(localUser.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+            return true;
+        }
+        
+        throw new Error("Invalid credentials.");
+
+    } catch (error: any) {
+        console.error("Login Error:", error);
+        throw error;
     }
   };
 
   const handleLogout = () => {
       setIsAuthenticated(false);
       setIsAdmin(false);
-      setCurrentScreen(Screen.LOGIN);
+      handleSetScreen(Screen.LOGIN);
   };
 
-  // Global User Management Handlers
+  // Global User Management Handlers (Admin)
   const handleUpdateUser = (updatedUser: User) => {
+    // Update local persistence
     setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
-    // If we updated the currently logged in user, update local state too
+    
+    // If Admin edited the currently logged-in user (self), update session state
     if (currentUser.id === updatedUser.id) {
         setCurrentUser(updatedUser);
     }
@@ -183,7 +306,6 @@ const App: React.FC = () => {
 
   const handleDeleteUser = (userId: string) => {
       setRegisteredUsers(prev => prev.filter(u => u.id !== userId));
-      // If deleting self, logout
       if (currentUser.id === userId) {
           handleLogout();
       }
@@ -210,7 +332,7 @@ const App: React.FC = () => {
             </p>
             <div className="flex items-center gap-3 text-textMuted text-sm">
                <Loader2 className="animate-spin text-neon" size={18} />
-               <span>Initializing Game Engine...</span>
+               <span>Loading Experience...</span>
             </div>
          </div>
       </div>
@@ -221,9 +343,9 @@ const App: React.FC = () => {
     // Unauthenticated Routes
     if (!isAuthenticated) {
         if (currentScreen === Screen.REGISTER) {
-            return <RegisterScreen setScreen={setCurrentScreen} onRegister={handleRegister} />;
+            return <RegisterScreen setScreen={handleSetScreen} onRegister={handleRegisterSuccess} />;
         }
-        return <LoginScreen onLogin={handleLogin} setScreen={setCurrentScreen} registeredUsers={registeredUsers} />;
+        return <LoginScreen onLogin={handleLogin} setScreen={handleSetScreen} language={language}/>;
     }
 
     // Admin Dashboard Screen (Isolated from Layout)
@@ -233,10 +355,12 @@ const App: React.FC = () => {
                 onLogout={handleLogout} 
                 commissionRate={commissionRate}
                 setCommissionRate={setCommissionRate}
-                onEnterGame={() => setCurrentScreen(Screen.HOME)}
-                users={registeredUsers}
+                onEnterGame={() => handleSetScreen(Screen.HOME)}
+                users={registeredUsers} 
                 onUpdateUser={handleUpdateUser}
                 onDeleteUser={handleDeleteUser}
+                masterTransactions={transactions}
+                addTransaction={addTransaction}
             />
         );
     }
@@ -247,7 +371,7 @@ const App: React.FC = () => {
         return (
           <HomeScreen 
             user={currentUser} 
-            setScreen={setCurrentScreen} 
+            setScreen={handleSetScreen} 
           />
         );
       case Screen.GAME:
@@ -260,32 +384,42 @@ const App: React.FC = () => {
             playerCount={playerCount}
             setPlayerCount={setPlayerCount}
             addHistory={addHistory} 
-            setScreen={setCurrentScreen}
-            commissionRate={commissionRate} 
+            setScreen={handleSetScreen}
+            commissionRate={commissionRate}
+            isOnline={isOnline}
           />
         );
+      case Screen.DICE_TABLE:
+          return (
+             <DiceTableScreen 
+                user={currentUser}
+                setUser={setCurrentUser}
+                setScreen={handleSetScreen}
+                addHistory={addHistory}
+                isOnline={isOnline}
+             />
+          );
       case Screen.WALLET:
         return (
           <WalletScreen 
             user={currentUser} 
-            setScreen={setCurrentScreen} 
+            setScreen={handleSetScreen} 
             setUser={setCurrentUser}
             transactions={transactions}
             addTransaction={addTransaction}
+            returnScreen={returnScreen}
           />
         );
       case Screen.HISTORY:
-        return <HistoryScreen history={history} setScreen={setCurrentScreen} />;
+        return <HistoryScreen history={history} setScreen={handleSetScreen} />;
       case Screen.PROFILE:
         return (
             <ProfileScreen 
                 user={currentUser} 
                 setUser={setCurrentUser}
-                setScreen={setCurrentScreen} 
+                setScreen={handleSetScreen} 
                 onLogout={handleLogout}
-                registeredUsers={registeredUsers}
                 onUpdateUser={handleUpdateUser}
-                onDeleteUser={handleDeleteUser}
                 language={language}
                 setLanguage={setLanguage}
             />
@@ -293,7 +427,7 @@ const App: React.FC = () => {
       default:
         return <HomeScreen 
             user={currentUser} 
-            setScreen={setCurrentScreen} 
+            setScreen={handleSetScreen} 
         />;
     }
   };
@@ -303,9 +437,12 @@ const App: React.FC = () => {
       return (
         <Layout 
             currentScreen={currentScreen} 
-            setScreen={setCurrentScreen} 
+            setScreen={handleSetScreen} 
             isAdmin={isAdmin} 
             onLogout={handleLogout}
+            language={language}
+            isOnline={isOnline}
+            setIsOnline={setIsOnline}
         >
             {renderScreen()}
         </Layout>

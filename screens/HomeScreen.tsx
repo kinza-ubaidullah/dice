@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { User, Screen } from '../types';
-import { Play, Wallet, Trophy, Flame, Star, Dices as DiceIcon } from 'lucide-react';
+import { Play, Wallet, Trophy, Flame, Star, Dices as DiceIcon, Plus } from 'lucide-react';
 import Dice from '../components/Dice';
 
 interface HomeScreenProps {
@@ -35,13 +35,27 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between md:justify-end gap-4 bg-black/30 p-4 rounded-xl border border-white/5 md:min-w-[300px]">
-            <div className="flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-orange-500/20 rounded-xl text-orange-400">
+        <div 
+            onClick={() => setScreen(Screen.WALLET)}
+            className="group cursor-pointer flex items-center justify-between md:justify-end gap-4 bg-black/30 p-4 rounded-xl border border-white/5 md:min-w-[300px] transition-all hover:border-neon/50 hover:bg-black/50"
+        >
+            <div className="flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-orange-500/20 rounded-xl text-orange-400 relative">
                 <Wallet size={24} />
+                {user.wallet.balance <= 0 && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#151a21] animate-pulse"></div>
+                )}
             </div>
-            <div className="text-right">
-                <p className="text-textMuted text-xs font-bold uppercase tracking-widest">Wallet Balance</p>
-                <p className="text-neon font-digital text-2xl md:text-3xl font-bold tracking-wider">{user.balance.toLocaleString()} CFA</p>
+            <div className="text-right flex-1">
+                <p className="text-textMuted text-xs font-bold uppercase tracking-widest flex justify-end gap-1 items-center">
+                    Wallet Balance 
+                    {user.wallet.balance <= 0 && <span className="text-[9px] text-neon bg-neon/10 px-1 rounded animate-pulse">TOP UP</span>}
+                </p>
+                <p className="text-neon font-digital text-2xl md:text-3xl font-bold tracking-wider group-hover:text-white transition-colors">
+                    {user.wallet.balance.toLocaleString()} CFA
+                </p>
+            </div>
+            <div className="bg-neon/10 p-1.5 rounded-full text-neon opacity-0 group-hover:opacity-100 transition-opacity">
+                <Plus size={16} />
             </div>
         </div>
       </div>
@@ -52,23 +66,25 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
             <Flame className="text-red-500" /> TRENDING GAMES
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Casino Dice (Existing Game) */}
             <div onClick={() => setScreen(Screen.GAME)} className="group bg-gradient-to-b from-[#1F2833] to-[#0B0C10] p-4 rounded-2xl border border-gray-800 hover:border-gold transition-all cursor-pointer relative overflow-hidden h-40 flex items-center justify-center">
                 <div className="absolute inset-0 bg-gold/5 group-hover:bg-gold/10 transition-colors"></div>
                 <div className="scale-75 group-hover:scale-90 transition-transform duration-300">
                     <Dice value={6} isRolling={false} color="gold" size="lg" />
                 </div>
                 <div className="absolute bottom-3 left-0 w-full text-center">
-                    <span className="text-gold font-bold text-xs uppercase tracking-wider">Golden Dice</span>
+                    <span className="text-gold font-bold text-xs uppercase tracking-wider">Casino Dice</span>
                 </div>
             </div>
 
-            <div onClick={() => setScreen(Screen.GAME)} className="group bg-gradient-to-b from-[#1F2833] to-[#0B0C10] p-4 rounded-2xl border border-gray-800 hover:border-danger transition-all cursor-pointer relative overflow-hidden h-40 flex items-center justify-center">
+            {/* Dice Table (New Game) */}
+            <div onClick={() => setScreen(Screen.DICE_TABLE)} className="group bg-gradient-to-b from-[#1F2833] to-[#0B0C10] p-4 rounded-2xl border border-gray-800 hover:border-danger transition-all cursor-pointer relative overflow-hidden h-40 flex items-center justify-center">
                 <div className="absolute inset-0 bg-danger/5 group-hover:bg-danger/10 transition-colors"></div>
                 <div className="scale-75 group-hover:scale-90 transition-transform duration-300 rotate-12">
                     <Dice value={5} isRolling={false} color="danger" size="lg" />
                 </div>
                 <div className="absolute bottom-3 left-0 w-full text-center">
-                    <span className="text-danger font-bold text-xs uppercase tracking-wider">Red Heat</span>
+                    <span className="text-danger font-bold text-xs uppercase tracking-wider">Dice Table</span>
                 </div>
             </div>
         </div>

@@ -2,23 +2,26 @@
 import React, { useState } from 'react';
 import { Screen, User } from '../types';
 import NeonButton from '../components/NeonButton';
-import { ArrowLeft, User as UserIcon, Mail, Phone, Lock, Dices } from 'lucide-react';
+import { ArrowLeft, User as UserIcon, Mail, Phone, Lock } from 'lucide-react';
 
 interface RegisterScreenProps {
   setScreen: (screen: Screen) => void;
-  onRegister: (user: User) => boolean;
+  onRegister: (user: User) => Promise<boolean>;
 }
 
 const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }) => {
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
     password: ''
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   const isValid = 
-    formData.name.trim().length > 0 && 
+    formData.firstName.trim().length > 0 && 
+    formData.lastName.trim().length > 0 &&
     formData.email.trim().length > 0 && 
     formData.phone.trim().length > 0 && 
     formData.password.trim().length > 0;
@@ -27,18 +30,63 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
+      setIsLoading(true);
+      
+      const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+
       const newUser: User = {
-          id: Date.now().toString(), // Generate unique ID
-          name: formData.name,
+          id: Date.now().toString(), // Temporary ID, API usually returns real UID
+          name: fullName,
           email: formData.email,
           phone: formData.phone,
           password: formData.password,
-          balance: 0,
-          avatarUrl: '', // Will be generated in App.tsx
-          role: 'USER'
+          wallet: {
+              balance: 0,
+              totalDeposited: 0,
+              totalWithdrawn: 0
+          },
+          avatarUrl: '', 
+          role: 'USER',
+          stats: {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              totalWagered: 0,
+              totalWon: 0
+          },
+          withdrawalLimits: {
+              countThisWeek: 0,
+              lastWithdrawalDate: new Date().toISOString()
+          }
       };
-      onRegister(newUser);
+      
+      try {
+          const { authApi } = await import('../utils/api');
+          // Make API call
+          const response = await authApi.signup(
+              formData.email, 
+              formData.password, 
+              formData.firstName, 
+              formData.lastName, 
+              formData.phone
+          );
+          
+          if (response) {
+             const apiUser = {
+                 ...newUser,
+                 // Use API returned data if available
+                 id: response.uid || response.id || newUser.id,
+                 name: response.displayName || `${response.firstName} ${response.lastName}` || newUser.name,
+                 role: 'USER'
+             };
+             // Pass to parent handler to set state/login
+             await onRegister(apiUser);
+          }
+      } catch (error: any) {
+          alert(`Registration Failed: ${error.message || 'Unknown error'}`);
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   return (
@@ -85,17 +133,27 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                 <p className="text-textMuted text-sm mb-8">Join the table and start rolling.</p>
 
                 <div className="space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-textMuted uppercase ml-1">Full Name</label>
-                        <div className="relative group">
-                            <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon transition-colors" size={18} />
+                    <div className="flex gap-4">
+                        <div className="space-y-2 flex-1">
+                            <label className="text-xs font-bold text-textMuted uppercase ml-1">First Name</label>
                             <input 
-                                name="name"
-                                value={formData.name}
+                                name="firstName"
+                                value={formData.firstName}
                                 onChange={handleChange}
                                 type="text" 
-                                className="w-full bg-panel border border-gray-700 rounded-xl py-3 pl-11 pr-4 text-white focus:border-neon focus:shadow-[0_0_10px_rgba(102,252,241,0.2)] focus:outline-none transition-all placeholder:text-gray-600" 
-                                placeholder="John Doe" 
+                                className="w-full bg-panel border border-gray-700 rounded-xl py-3 px-4 text-white focus:border-neon focus:outline-none placeholder:text-gray-600" 
+                                placeholder="John" 
+                            />
+                        </div>
+                        <div className="space-y-2 flex-1">
+                            <label className="text-xs font-bold text-textMuted uppercase ml-1">Last Name</label>
+                            <input 
+                                name="lastName"
+                                value={formData.lastName}
+                                onChange={handleChange}
+                                type="text" 
+                                className="w-full bg-panel border border-gray-700 rounded-xl py-3 px-4 text-white focus:border-neon focus:outline-none placeholder:text-gray-600" 
+                                placeholder="Doe" 
                             />
                         </div>
                     </div>
@@ -146,8 +204,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                     </div>
                     
                     <div className="pt-6">
-                        <NeonButton fullWidth onClick={handleRegister} disabled={!isValid}>
-                            REGISTER NOW
+                        <NeonButton fullWidth onClick={handleRegister} disabled={!isValid || isLoading}>
+                            {isLoading ? 'REGISTERING...' : 'REGISTER NOW'}
                         </NeonButton>
                     </div>
                 </div>

@@ -1,7 +1,8 @@
 
 import React, { ReactNode } from 'react';
 import { Screen } from '../types';
-import { Home, Gamepad2, Wallet, User as UserIcon, LogOut, LayoutDashboard } from 'lucide-react';
+import { Home, Gamepad2, Wallet, User as UserIcon, LogOut, Wifi, WifiOff } from 'lucide-react';
+import { translate } from '../utils/i18n';
 
 interface LayoutProps {
   children: ReactNode;
@@ -9,6 +10,9 @@ interface LayoutProps {
   setScreen: (screen: Screen) => void;
   isAdmin?: boolean;
   onLogout?: () => void;
+  language?: string;
+  isOnline?: boolean;
+  setIsOnline?: (status: boolean) => void;
 }
 
 const Layout: React.FC<LayoutProps> = ({ 
@@ -16,7 +20,10 @@ const Layout: React.FC<LayoutProps> = ({
   currentScreen, 
   setScreen, 
   isAdmin = false,
-  onLogout
+  onLogout,
+  language = 'English',
+  isOnline = true,
+  setIsOnline
 }) => {
   // If we are in Auth screens, use a simple full-screen container
   if (currentScreen === Screen.LOGIN || currentScreen === Screen.REGISTER) {
@@ -28,10 +35,10 @@ const Layout: React.FC<LayoutProps> = ({
   }
 
   const navItems = [
-    { id: Screen.HOME, label: 'Lobby', icon: <Home size={20} /> },
-    { id: Screen.GAME, label: 'Games', icon: <Gamepad2 size={20} /> },
-    { id: Screen.WALLET, label: 'Wallet', icon: <Wallet size={20} /> },
-    { id: Screen.PROFILE, label: 'Profile', icon: <UserIcon size={20} /> },
+    { id: Screen.HOME, label: translate('Lobby', language), icon: <Home size={20} /> },
+    { id: Screen.GAME, label: translate('Games', language), icon: <Gamepad2 size={20} /> },
+    { id: Screen.WALLET, label: translate('Wallet', language), icon: <Wallet size={20} /> },
+    { id: Screen.PROFILE, label: translate('Profile', language), icon: <UserIcon size={20} /> },
   ];
 
   return (
@@ -59,15 +66,22 @@ const Layout: React.FC<LayoutProps> = ({
                 </button>
             ))}
 
-            {/* Admin Return Link */}
-            {isAdmin && (
-               <button
-                  onClick={() => setScreen(Screen.ADMIN)}
-                  className="w-full flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-300 text-gold hover:bg-gold/10 hover:text-white mt-6 border border-gold/20"
-              >
-                  <LayoutDashboard size={20} />
-                  <span className="font-bold tracking-wide">Admin Panel</span>
-              </button>
+            {/* Online/Offline Toggle */}
+            {setIsOnline && (
+                <button
+                    onClick={() => setIsOnline(!isOnline)}
+                    className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl transition-all duration-300 mt-8 ${
+                        isOnline 
+                        ? 'text-green-400 bg-green-400/10 border border-green-500/30' 
+                        : 'text-gray-500 bg-gray-700/20 border border-gray-700'
+                    }`}
+                >
+                    {isOnline ? <Wifi size={20} /> : <WifiOff size={20} />}
+                    <div className="text-left">
+                        <span className="font-bold tracking-wide block text-sm">{isOnline ? 'ONLINE MODE' : 'OFFLINE MODE'}</span>
+                        <span className="text-[10px] opacity-70 block">{isOnline ? 'Multiplayer & API' : 'Demo Simulation'}</span>
+                    </div>
+                </button>
             )}
         </nav>
 
@@ -76,7 +90,7 @@ const Layout: React.FC<LayoutProps> = ({
                 onClick={onLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 text-danger hover:bg-danger/10 rounded-xl transition-all"
             >
-                <LogOut size={20} /> Logout
+                <LogOut size={20} /> {translate('Logout', language)}
             </button>
         </div>
       </aside>
@@ -105,19 +119,18 @@ const Layout: React.FC<LayoutProps> = ({
                     <span className="text-[10px] font-bold uppercase tracking-wider">{item.label}</span>
                 </button>
             ))}
-            
-            {/* Admin Mobile Link */}
-            {isAdmin && (
+             {/* Mobile Wifi Toggle (Mini) */}
+             {setIsOnline && (
                 <button
-                    onClick={() => setScreen(Screen.ADMIN)}
-                    className="flex flex-col items-center justify-center w-full h-full space-y-1 text-gold"
+                    onClick={() => setIsOnline(!isOnline)}
+                    className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isOnline ? 'text-green-400' : 'text-gray-600'}`}
                 >
-                    <div className="p-1.5 rounded-full bg-gold/10">
-                        <LayoutDashboard size={20} />
+                    <div className={`p-1.5 rounded-full transition-all ${isOnline ? 'bg-green-500/10' : ''}`}>
+                         {isOnline ? <Wifi size={20} /> : <WifiOff size={20} />}
                     </div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider">Admin</span>
+                     <span className="text-[10px] font-bold uppercase tracking-wider">{isOnline ? 'ON' : 'OFF'}</span>
                 </button>
-            )}
+             )}
         </div>
       </nav>
 
