@@ -244,7 +244,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                             type="number" 
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            placeholder={isDepositView ? (amountMode === 'VIP' ? "Min 1000" : "Min 100") : "Min 1000"}
+                            placeholder={isDepositView ? "Min 100" : "Min 1000"}
                             className="w-full bg-black/40 border border-gray-600 rounded-xl py-4 px-4 text-white font-digital text-3xl focus:border-neon focus:outline-none"
                         />
                         
