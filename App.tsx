@@ -136,6 +136,8 @@ const App: React.FC = () => {
               }
               return prevUsers;
           });
+          // Also update session marker
+          localStorage.setItem('last_active_user_id', currentUser.id);
       }
   }, [currentUser, isAuthenticated]);
   
@@ -151,6 +153,21 @@ const App: React.FC = () => {
           return () => clearInterval(interval);
       }
   }, [isAuthenticated, currentUser.id, currentUser.name, trackLiveUsers, isOnline]);
+
+  // 8. Auto-Login on Mount
+  useEffect(() => {
+      const lastId = localStorage.getItem('last_active_user_id');
+      if (lastId && !isAuthenticated) {
+          const user = registeredUsers.find(u => u.id === lastId);
+          if (user) {
+              console.log("Auto-logging in user from local storage:", user.name);
+              setCurrentUser(user);
+              setIsAuthenticated(true);
+              setIsAdmin(user.role === 'ADMIN');
+              setCurrentScreen(user.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+          }
+      }
+  }, []); // Run once on mount
 
 
   const addHistory = (record: GameRecord) => {
@@ -230,7 +247,25 @@ const App: React.FC = () => {
                 const userData = response.data || response;
                 
                 if (userData) {
-                    const mappedUser = mapApiUserToState(userData);
+                    let mappedUser = mapApiUserToState(userData);
+
+                    // --- PERSISTENCE FIX: PRESERVE LOCAL WALLET ---
+                    // If the API returns a fresh/stateless user, we want to keep the local balance 
+                    // to ensure user progress isn't lost on login/restart.
+                    const existingLocalUser = registeredUsers.find(u => 
+                        u.id === mappedUser.id || u.email === mappedUser.email
+                    );
+
+                    if (existingLocalUser) {
+                        console.log("Preserving local wallet for user:", mappedUser.name);
+                        mappedUser = {
+                            ...mappedUser,
+                            wallet: existingLocalUser.wallet,
+                            stats: existingLocalUser.stats,
+                            withdrawalLimits: existingLocalUser.withdrawalLimits
+                        };
+                    }
+                    // ----------------------------------------------
 
                     if (mappedUser.isBlocked) {
                         throw new Error("Account is blocked. Contact support.");
@@ -288,6 +323,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+      localStorage.removeItem('last_active_user_id');
       setIsAuthenticated(false);
       setIsAdmin(false);
       handleSetScreen(Screen.LOGIN);
@@ -325,7 +361,7 @@ const App: React.FC = () => {
               <Dices size={48} className="text-neon" />
             </div>
             <h1 className="font-title text-4xl md:text-6xl text-white mb-2 tracking-tight">
-              DICE <span className="text-neon">WORD</span>
+              DICE <span className="text-neon">WORLD</span>
             </h1>
             <p className="text-gold font-digital text-lg md:text-xl tracking-widest uppercase mb-8">
               by Big Size Entertainment

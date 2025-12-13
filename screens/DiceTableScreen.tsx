@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { User, Screen, GameRecord } from '../types';
-import { ChevronLeft, Wallet, Volume2, VolumeX, Plus, Minus, WifiOff, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Wallet, Volume2, VolumeX, WifiOff, AlertTriangle, RefreshCw, Hand, Info, Crown, ArrowRight } from 'lucide-react';
 import Dice from '../components/Dice';
 import NeonButton from '../components/NeonButton';
 import { audioManager } from '../utils/audio';
@@ -16,8 +16,11 @@ interface DiceTableScreenProps {
 }
 
 const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScreen, addHistory, isOnline = true }) => {
-  const [betPerNumber, setBetPerNumber] = useState<number>(1000);
-  const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
+  // State for individual bets: { [diceNumber]: betAmount }
+  const [bets, setBets] = useState<Record<number, number>>({});
+  const [activeMenuNum, setActiveMenuNum] = useState<number | null>(null);
+  const [betMode, setBetMode] = useState<'STD' | 'VIP'>('STD');
+  
   const [diceValue, setDiceValue] = useState<number>(1);
   const [gameState, setGameState] = useState<'IDLE' | 'ROLLING' | 'RESULT'>('IDLE');
   const [resultMessage, setResultMessage] = useState<{ text: string, type: 'WIN' | 'LOSS' | null }>({ text: '', type: null });
@@ -25,52 +28,74 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
   const [showLowBalanceModal, setShowLowBalanceModal] = useState(false);
   const [localFallback, setLocalFallback] = useState(false);
 
-  const MIN_BET = 100;
+  // Betting Options Configuration
+  const BET_OPTIONS_STD = [100, 500, 1000];
+  const BET_OPTIONS_VIP = [2000, 5000, 10000];
+  
   const MULTIPLIER = 5; 
 
-  const totalBet = betPerNumber * selectedNumbers.length;
+  const totalBet = (Object.values(bets) as number[]).reduce((sum: number, amount: number) => sum + amount, 0);
 
-  const handleBetChange = (delta: number) => {
-    setBetPerNumber(Math.max(MIN_BET, betPerNumber + delta));
-  };
-
-  const handleBetInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = parseInt(e.target.value);
-      if (!isNaN(val)) setBetPerNumber(val);
-  };
-
-  const handleBetInputBlur = () => {
-      if (betPerNumber < MIN_BET) setBetPerNumber(MIN_BET);
-  };
+  // Long Press Refs
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPress = useRef(false);
 
   const toggleMute = () => {
       setIsMuted(audioManager.toggleMute());
   };
 
-  const handleNumberToggle = (num: number) => {
-      if (gameState === 'ROLLING' || gameState === 'RESULT') return; // Disable selection in result state too until reset
-      audioManager.play('CLICK');
+  const handleTouchStart = (num: number) => {
+      if (gameState !== 'IDLE') return;
+      isLongPress.current = false;
+      pressTimer.current = setTimeout(() => {
+          isLongPress.current = true;
+          setActiveMenuNum(num);
+          audioManager.play('CLICK');
+      }, 600); // 600ms for long press
+  };
+
+  const handleTouchEnd = (e: React.MouseEvent | React.TouchEvent, num: number) => {
+      if (gameState !== 'IDLE') return;
+      e.preventDefault(); // Prevent ghost clicks
       
-      setSelectedNumbers(prev => {
-          if (prev.includes(num)) {
-              return prev.filter(n => n !== num);
-          } else {
-              return [...prev, num];
+      if (pressTimer.current) {
+          clearTimeout(pressTimer.current);
+          pressTimer.current = null;
+      }
+
+      // If it wasn't a long press
+      if (!isLongPress.current) {
+          // If menu is open, tapping the number again or another number closes it
+          if (activeMenuNum !== null) {
+              setActiveMenuNum(null);
+          } else if (bets[num]) {
+              // Tapping a selected number removes the bet
+              const newBets = { ...bets };
+              delete newBets[num];
+              setBets(newBets);
+              audioManager.play('CLICK');
           }
-      });
-      setResultMessage({ text: '', type: null });
+      }
+  };
+
+  const handleSelectBet = (e: React.MouseEvent | React.TouchEvent, num: number, amount: number) => {
+      e.stopPropagation();
+      setBets(prev => ({ ...prev, [num]: amount }));
+      setActiveMenuNum(null);
+      audioManager.play('CLICK');
   };
 
   const handleReset = () => {
       audioManager.play('CLICK');
       setGameState('IDLE');
-      setSelectedNumbers([]);
+      setBets({});
       setResultMessage({ text: '', type: null });
+      setActiveMenuNum(null);
   };
 
   const handleRoll = async () => {
-      if (selectedNumbers.length === 0) {
-          alert("Select at least one number!");
+      if (totalBet === 0) {
+          alert("Place a bet on at least one number!");
           return;
       }
 
@@ -90,6 +115,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
       setGameState('ROLLING');
       audioManager.play('ROLL');
       setResultMessage({ text: '', type: null });
+      setActiveMenuNum(null); // Close any open menus
 
       // Start Visual Rolling Animation
       let animationRolls = 0;
@@ -104,10 +130,8 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
 
           // --- HOUSE EDGE LOGIC ---
           // If player covers ALL options (selects all 6), force the result to be 1.
-          // Since 1 is the House Number (Loss), this prevents guaranteed wins.
-          if (selectedNumbers.length === 6) {
+          if (Object.keys(bets).length === 6) {
               finalVal = 1;
-              // Skip API/RNG if forcing logic applies
               setTimeout(() => {
                   clearInterval(animationInterval);
                   finalizeGame(finalVal);
@@ -160,13 +184,13 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
       setGameState('RESULT');
 
       // Rule: Number 1 is strictly House Property.
-      // If result is 1, player loses regardless of their selection.
       const isHouseWin = finalValue === 1;
-      const isWin = !isHouseWin && selectedNumbers.includes(finalValue);
+      
+      const winningBetAmount = bets[finalValue] || 0;
+      const isWin = !isHouseWin && winningBetAmount > 0;
       
       if (isWin) {
-          // Prize is equal to 5 times the player's bet on the winning number
-          const winAmount = betPerNumber * MULTIPLIER;
+          const winAmount = winningBetAmount * MULTIPLIER;
           
           setUser(prev => ({
               ...prev,
@@ -191,14 +215,14 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
           id: Date.now().toString(),
           date: new Date().toLocaleTimeString(),
           betAmount: totalBet,
-          userScore: 0, // Placeholder for this game mode
+          userScore: 0,
           opponentScore: finalValue,
           result: isWin ? 'WIN' : 'LOSS'
       });
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#111] overflow-hidden animate-fade-in text-white font-body select-none">
+    <div className="flex flex-col h-screen w-full bg-[#111] overflow-hidden animate-fade-in text-white font-body select-none" onClick={() => { if(activeMenuNum !== null) setActiveMenuNum(null); }}>
       
       {/* 1. TOP BAR */}
       <div className="shrink-0 h-[60px] px-4 flex items-center justify-between bg-[#0B0C10] border-b border-gray-800 z-50">
@@ -222,7 +246,6 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
       {/* 2. GAME AREA */}
       <div className="flex-1 relative w-full flex flex-col items-center justify-start bg-[#0B0C10] p-4 pt-12 md:pt-20 overflow-y-auto gap-6">
          
-         {/* Background Subtle Texture */}
          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#1F2833] via-[#0B0C10] to-[#000000] opacity-50 pointer-events-none"></div>
 
          {/* Dice Rolling Area */}
@@ -246,49 +269,137 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
          {/* THE BOARD */}
          <div className="relative w-full max-w-[400px] z-10 p-4 rounded bg-[#8B5A2B] shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-b-8 border-r-8 border-[#5C3A1E]">
              
-             {/* Rule Badge */}
-             <div className="absolute -top-6 left-0 w-full flex justify-center">
-                 <div className="bg-red-500/20 border border-red-500/50 text-red-400 px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest flex items-center gap-1">
-                     <AlertTriangle size={10} /> #1 IS HOUSE (AUTO LOSS)
-                 </div>
-             </div>
-
              {/* The Grid */}
              <div className="grid grid-cols-3 grid-rows-2 gap-2 bg-black border-4 border-black aspect-[4/3]">
                  {[1, 2, 3, 4, 5, 6].map((num) => {
-                     const isSelected = selectedNumbers.includes(num);
+                     const myBet = bets[num];
+                     const isSelected = myBet !== undefined;
                      const isWinningNum = gameState === 'RESULT' && diceValue === num;
+                     const isMenuOpen = activeMenuNum === num;
+                     
+                     // Determine Row: 1,2,3 is Top Row. 4,5,6 is Bottom Row.
+                     const isTopRow = num <= 3;
 
                      return (
-                        <button
-                            key={num}
-                            onClick={() => handleNumberToggle(num)}
-                            disabled={gameState === 'ROLLING' || gameState === 'RESULT'}
-                            className={`
-                                relative flex items-center justify-center transition-all duration-100
-                                ${isSelected ? 'bg-black text-white' : 'bg-[#E8DCC4] hover:bg-[#D8CCB4] text-black'}
-                                ${isWinningNum ? '!bg-gold !text-black animate-pulse' : ''}
-                            `}
+                        <div 
+                            key={num} 
+                            className="relative w-full h-full"
+                            onMouseEnter={() => {
+                                // Desktop Hover Logic
+                                if (gameState === 'IDLE' && window.matchMedia('(hover: hover)').matches) {
+                                    setActiveMenuNum(num);
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                // Desktop Hover Logic
+                                if (gameState === 'IDLE' && window.matchMedia('(hover: hover)').matches) {
+                                    setActiveMenuNum(null);
+                                }
+                            }}
                         >
-                            <span className="font-sans font-bold text-6xl md:text-7xl leading-none select-none">
-                                {num}
-                            </span>
-                            
-                            {/* Selected Indicator (Chip) */}
-                            {isSelected && (
-                                <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-neon border-2 border-white animate-fade-in shadow-md flex items-center justify-center">
-                                    <div className="w-2 h-2 bg-black rounded-full"></div>
+                            {/* Betting Menu Popover */}
+                            {isMenuOpen && (
+                                <div className={`
+                                    absolute left-1/2 -translate-x-1/2 z-[60] flex flex-col bg-black/95 backdrop-blur-md border border-gray-700 rounded-xl p-2 shadow-[0_0_30px_rgba(0,0,0,0.8)] animate-fade-in-up min-w-[160px]
+                                    ${isTopRow ? 'top-[80%]' : 'bottom-[80%]'}
+                                `}>
+                                    
+                                    {/* Mode Toggle */}
+                                    <div className="flex p-1 bg-gray-900 rounded-lg mb-2 border border-gray-800">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setBetMode('STD'); }}
+                                            className={`flex-1 text-[10px] font-bold py-1.5 rounded transition-all ${betMode === 'STD' ? 'bg-neon text-black shadow-[0_0_10px_#66FCF1]' : 'text-gray-500 hover:text-white'}`}
+                                        >
+                                            STD
+                                        </button>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setBetMode('VIP'); }}
+                                            className={`flex-1 text-[10px] font-bold py-1.5 rounded transition-all flex items-center justify-center gap-1 ${betMode === 'VIP' ? 'bg-gold text-black shadow-[0_0_10px_#FFD700]' : 'text-gray-500 hover:text-white'}`}
+                                        >
+                                            <Crown size={10} /> VIP
+                                        </button>
+                                    </div>
+
+                                    {/* Options Grid */}
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {(betMode === 'STD' ? BET_OPTIONS_STD : BET_OPTIONS_VIP).map(amount => (
+                                            <button 
+                                                key={amount}
+                                                onClick={(e) => handleSelectBet(e, num, amount)}
+                                                className={`
+                                                    py-2 px-1 rounded text-white font-digital font-bold text-sm transition-colors border
+                                                    ${betMode === 'VIP' 
+                                                        ? 'bg-gold/10 border-gold/30 hover:bg-gold hover:text-black' 
+                                                        : 'bg-gray-800 border-gray-700 hover:bg-neon hover:text-black'
+                                                    }
+                                                `}
+                                            >
+                                                {amount}
+                                            </button>
+                                        ))}
+
+                                        {/* Custom Amount Input Link */}
+                                        <div className="col-span-2 mt-1">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setScreen(Screen.WALLET); }}
+                                                className="w-full bg-gray-800 border border-gray-600 rounded py-2 px-2 flex items-center justify-between group hover:border-neon hover:bg-gray-700 transition-all"
+                                            >
+                                                <span className="text-[10px] text-gray-400 group-hover:text-white">Custom Amount...</span>
+                                                <ArrowRight size={12} className="text-gray-500 group-hover:text-neon" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Triangle Pointer */}
+                                    {isTopRow ? (
+                                        // Point UP (Menu is below)
+                                        <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-gray-700"></div>
+                                    ) : (
+                                        // Point DOWN (Menu is above)
+                                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-gray-700"></div>
+                                    )}
                                 </div>
                             )}
-                        </button>
+
+                            <button
+                                onMouseDown={() => handleTouchStart(num)}
+                                onMouseUp={(e) => handleTouchEnd(e, num)}
+                                onTouchStart={() => handleTouchStart(num)}
+                                onTouchEnd={(e) => handleTouchEnd(e, num)}
+                                onContextMenu={(e) => e.preventDefault()}
+                                disabled={gameState === 'ROLLING' || gameState === 'RESULT'}
+                                className={`
+                                    w-full h-full relative flex items-center justify-center transition-all duration-100
+                                    ${isSelected ? 'bg-black text-white' : 'bg-[#E8DCC4] hover:bg-[#D8CCB4] text-black'}
+                                    ${isWinningNum ? '!bg-gold !text-black animate-pulse' : ''}
+                                    active:scale-95
+                                `}
+                            >
+                                <span className="font-sans font-bold text-6xl md:text-7xl leading-none select-none pointer-events-none">
+                                    {num}
+                                </span>
+                                
+                                {/* Bet Indicator (Chip) */}
+                                {isSelected && (
+                                    <div className={`absolute top-1 right-1 sm:top-2 sm:right-2 border border-black shadow-lg rounded px-1.5 py-0.5 min-w-[40px] flex items-center justify-center animate-fade-in z-10 pointer-events-none ${myBet >= 1000 ? 'bg-gold text-black' : 'bg-neon text-black'}`}>
+                                        <span className="text-[10px] sm:text-xs font-black font-digital leading-none">
+                                            {myBet}
+                                        </span>
+                                    </div>
+                                )}
+                            </button>
+                        </div>
                      );
                  })}
              </div>
          </div>
          
-         <p className="mt-2 text-xs text-gray-500 font-mono tracking-widest uppercase text-center">
-             {gameState === 'ROLLING' ? 'ROLLING...' : gameState === 'RESULT' ? 'GAME OVER' : 'SELECT ONE OR MORE NUMBERS'}
-         </p>
+         <div className="flex items-center gap-2 text-gray-500 mt-2">
+             <Hand size={14} className="animate-bounce" />
+             <p className="text-xs font-mono tracking-widest uppercase text-center">
+                 HOVER OR LONG PRESS TO BET
+             </p>
+         </div>
 
       </div>
 
@@ -296,33 +407,21 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
       <div className="shrink-0 bg-[#0B0C10] border-t border-gray-800 p-4 pb-safe z-50">
           <div className="max-w-md mx-auto flex flex-col gap-4">
               
-              <div className="flex gap-4 items-stretch">
-                  {/* Bet Per Number */}
-                  <div className="flex flex-col gap-1 flex-1">
-                      <span className="text-[9px] text-gray-500 uppercase font-bold ml-1">Bet Per Number</span>
-                      <div className="flex items-center gap-1 bg-[#151a21] border border-gray-700 rounded-lg h-12 p-1">
-                            <button onClick={() => handleBetChange(-100)} disabled={gameState !== 'IDLE'} className="w-10 h-full bg-[#0B0C10] rounded border border-gray-800 flex items-center justify-center text-white hover:border-neon transition-colors disabled:opacity-50"><Minus size={16}/></button>
-                            <input 
-                                type="number" 
-                                value={betPerNumber} 
-                                onChange={handleBetInputChange}
-                                onBlur={handleBetInputBlur}
-                                disabled={gameState !== 'IDLE'}
-                                className="flex-1 bg-transparent text-center font-digital text-2xl font-bold text-white outline-none min-w-0 disabled:text-gray-500"
-                            />
-                            <button onClick={() => handleBetChange(100)} disabled={gameState !== 'IDLE'} className="w-10 h-full bg-[#0B0C10] rounded border border-gray-800 flex items-center justify-center text-white hover:border-neon transition-colors disabled:opacity-50"><Plus size={16}/></button>
-                      </div>
+              <div className="flex justify-between items-center bg-[#151a21] p-3 rounded-xl border border-gray-800">
+                  <div className="flex flex-col">
+                      <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Total Wager</span>
+                      <span className={`font-digital font-bold text-2xl ${totalBet > 0 ? 'text-neon' : 'text-gray-600'}`}>
+                          {totalBet.toLocaleString()} CFA
+                      </span>
                   </div>
-
-                  {/* Total Wager Display */}
-                  <div className="flex flex-col gap-1 w-1/3">
-                      <span className="text-[9px] text-gray-500 uppercase font-bold ml-1 text-right">Total Bet</span>
-                      <div className="bg-black/40 border border-gray-800 rounded-lg h-12 flex items-center justify-end px-3">
-                          <span className={`font-digital font-bold text-xl ${selectedNumbers.length > 0 ? 'text-neon' : 'text-gray-600'}`}>
-                             {totalBet > 0 ? totalBet.toLocaleString() : '0'}
-                          </span>
+                  {totalBet > 0 && (
+                      <div className="flex flex-col items-end">
+                           <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Potential Win</span>
+                           <span className="font-digital font-bold text-xl text-gold">
+                              {(Math.max(...(Object.values(bets) as number[])) * MULTIPLIER).toLocaleString()} CFA
+                           </span>
                       </div>
-                  </div>
+                  )}
               </div>
 
               {/* Action Button */}

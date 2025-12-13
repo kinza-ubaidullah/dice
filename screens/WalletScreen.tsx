@@ -6,7 +6,7 @@ import { audioManager } from '../utils/audio';
 import { 
     ArrowDown, ArrowUp, 
     Smartphone, CreditCard, X, ChevronLeft,
-    Loader2, Check, AlertTriangle, ChevronRight, Globe, Landmark 
+    Loader2, Check, AlertTriangle, ChevronRight, Globe, Landmark, Crown
 } from 'lucide-react';
 
 interface WalletScreenProps {
@@ -24,7 +24,8 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
   const [amount, setAmount] = useState<string>('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [processingState, setProcessingState] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS'>('IDLE');
-  
+  const [amountMode, setAmountMode] = useState<'STD' | 'VIP'>('STD');
+
   // Validation States
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -49,7 +50,8 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
     { id: 'MOOV', name: 'Moov Money', icon: <Smartphone size={24} />, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30' },
   ];
 
-  const quickAmounts = [1000, 2000, 5000, 10000];
+  const quickAmountsStd = [100, 500, 1000, 2000, 5000];
+  const quickAmountsVip = [1000, 2000, 3000, 4000, 5000];
 
   const handleBack = () => {
     if (view !== 'MAIN') {
@@ -242,15 +244,37 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                             type="number" 
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            placeholder={isDepositView ? "Min 100" : "Min 1000"}
+                            placeholder={isDepositView ? (amountMode === 'VIP' ? "Min 1000" : "Min 100") : "Min 1000"}
                             className="w-full bg-black/40 border border-gray-600 rounded-xl py-4 px-4 text-white font-digital text-3xl focus:border-neon focus:outline-none"
                         />
+                        
+                        <div className="flex p-1 bg-black/40 rounded-lg mt-3 border border-gray-800">
+                            <button 
+                                onClick={() => setAmountMode('STD')} 
+                                className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-md transition-all ${amountMode === 'STD' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
+                            >
+                                Standard
+                            </button>
+                            <button 
+                                onClick={() => setAmountMode('VIP')} 
+                                className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-md transition-all flex items-center justify-center gap-1 ${amountMode === 'VIP' ? 'bg-gold/20 text-gold border border-gold/20 shadow' : 'text-gray-500 hover:text-gold'}`}
+                            >
+                                <Crown size={12} /> VIP
+                            </button>
+                        </div>
+
                         <div className="flex gap-2 flex-wrap mt-3">
-                            {quickAmounts.map(amt => (
+                            {(amountMode === 'STD' ? quickAmountsStd : quickAmountsVip).map(amt => (
                                 <button 
                                     key={amt} 
                                     onClick={() => { audioManager.play('CLICK'); setAmount(amt.toString()); }} 
-                                    className="px-3 py-2 rounded-lg bg-gray-800 text-xs font-bold text-gray-300 hover:bg-neon hover:text-black transition-colors"
+                                    className={`
+                                        px-3 py-2 rounded-lg text-xs font-bold transition-colors
+                                        ${amountMode === 'VIP' 
+                                            ? 'bg-gold/10 text-gold border border-gold/20 hover:bg-gold hover:text-black' 
+                                            : 'bg-gray-800 text-gray-300 hover:bg-neon hover:text-black'
+                                        }
+                                    `}
                                 >
                                     +{amt.toLocaleString()}
                                 </button>

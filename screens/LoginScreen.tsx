@@ -78,7 +78,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
                 <Dices size={64} className="text-neon" />
               </div>
               <h1 className="font-title text-6xl text-white mb-4 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">
-                DICE <span className="text-neon">WORD</span>
+                DICE <span className="text-neon">WORLD</span>
               </h1>
               <p className="text-gold text-xl tracking-widest uppercase font-digital">
                 by Big Size Entertainment
@@ -92,7 +92,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
           {/* Mobile Header */}
           <div className="lg:hidden text-center mb-10">
              <h1 className="font-title text-5xl text-white">
-               DICE <br /> <span className="text-neon">WORD</span>
+               DICE <br /> <span className="text-neon">WORLD</span>
              </h1>
           </div>
 
