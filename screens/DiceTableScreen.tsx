@@ -1,473 +1,491 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { User, Screen, GameRecord } from '../types';
-import { ChevronLeft, Wallet, Volume2, VolumeX, WifiOff, AlertTriangle, RefreshCw, Hand, Info, Crown, ArrowRight } from 'lucide-react';
-import Dice from '../components/Dice';
-import NeonButton from '../components/NeonButton';
-import { audioManager } from '../utils/audio';
-import { gameApi } from '../utils/api';
+import React, { useState, useEffect } from 'react';
+import { Screen, User, GameRecord, Transaction } from './types';
+import Layout from './components/Layout';
+import HomeScreen from './screens/HomeScreen';
+import GameScreen from './screens/GameScreen';
+import WalletScreen from './screens/WalletScreen';
+import HistoryScreen from './screens/HistoryScreen';
+import LoginScreen from './screens/LoginScreen';
+import RegisterScreen from './screens/RegisterScreen';
+import AdminDashboard from './screens/AdminDashboard';
+import ProfileScreen from './screens/ProfileScreen';
+import DiceTableScreen from './screens/DiceTableScreen';
+import { Dices, Loader2 } from 'lucide-react';
+import { authApi } from './utils/api';
+import { useSocket } from './hooks/useSocket'; // Import Socket Hook
 
-interface DiceTableScreenProps {
-  user: User;
-  setUser: React.Dispatch<React.SetStateAction<User>>;
-  setScreen: (screen: Screen) => void;
-  addHistory: (record: GameRecord) => void;
-  isOnline?: boolean;
-}
+// Default Data Cleared for Production/API-First Approach
+const DEFAULT_USERS: User[] = [];
 
-const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScreen, addHistory, isOnline = true }) => {
-  // State for individual bets: { [diceNumber]: betAmount }
-  const [bets, setBets] = useState<Record<number, number>>({});
-  const [activeMenuNum, setActiveMenuNum] = useState<number | null>(null);
-  const [betMode, setBetMode] = useState<'STD' | 'VIP'>('STD');
+const App: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true); // App Loader State
+  const [currentScreen, setCurrentScreen] = useState<Screen>(Screen.LOGIN);
+  const [returnScreen, setReturnScreen] = useState<Screen>(Screen.HOME); // Track where to return after Wallet
+  const [betAmount, setBetAmount] = useState<number>(500); // Default to 500 Minimum
+  const [playerCount, setPlayerCount] = useState<number>(2);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   
-  const [diceValue, setDiceValue] = useState<number>(1);
-  const [gameState, setGameState] = useState<'IDLE' | 'ROLLING' | 'RESULT'>('IDLE');
-  const [resultMessage, setResultMessage] = useState<{ text: string, type: 'WIN' | 'LOSS' | null }>({ text: '', type: null });
-  const [isMuted, setIsMuted] = useState(audioManager.isMuted());
-  const [showLowBalanceModal, setShowLowBalanceModal] = useState(false);
-  const [localFallback, setLocalFallback] = useState(false);
+  // NETWORK STATE
+  // Defaults to navigator.onLine, but can be manually toggled
+  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
-  // Betting Options Configuration
-  const BET_OPTIONS_STD = [100, 500, 1000];
-  const BET_OPTIONS_VIP = [2000, 5000, 10000];
+  // Socket Integration (Mocked to prevent errors)
+  const { trackLiveUsers } = useSocket();
+
+  // Global Settings (Shared between Admin and Game)
+  const [commissionRate, setCommissionRate] = useState<number>(5); // Default 5%
   
-  const MULTIPLIER = 5; 
+  // Language State with Persistence
+  const [language, setLanguage] = useState<string>(() => {
+      return localStorage.getItem('app_language') || 'English';
+  });
 
-  const totalBet = (Object.values(bets) as number[]).reduce((sum: number, amount: number) => sum + amount, 0);
-
-  // Long Press Refs
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isLongPress = useRef(false);
-
-  const toggleMute = () => {
-      setIsMuted(audioManager.toggleMute());
-  };
-
-  const handleTouchStart = (num: number) => {
-      if (gameState !== 'IDLE') return;
-      isLongPress.current = false;
-      pressTimer.current = setTimeout(() => {
-          isLongPress.current = true;
-          setActiveMenuNum(num);
-          audioManager.play('CLICK');
-      }, 600); // 600ms for long press
-  };
-
-  const handleTouchEnd = (e: React.MouseEvent | React.TouchEvent, num: number) => {
-      if (gameState !== 'IDLE') return;
-      e.preventDefault(); // Prevent ghost clicks
-      
-      if (pressTimer.current) {
-          clearTimeout(pressTimer.current);
-          pressTimer.current = null;
-      }
-
-      // If it wasn't a long press
-      if (!isLongPress.current) {
-          // If menu is open, tapping the number again or another number closes it
-          if (activeMenuNum !== null) {
-              setActiveMenuNum(null);
-          } else if (bets[num]) {
-              // Tapping a selected number removes the bet
-              const newBets = { ...bets };
-              delete newBets[num];
-              setBets(newBets);
-              audioManager.play('CLICK');
-          }
-      }
-  };
-
-  const handleSelectBet = (e: React.MouseEvent | React.TouchEvent, num: number, amount: number) => {
-      e.stopPropagation();
-      setBets(prev => ({ ...prev, [num]: amount }));
-      setActiveMenuNum(null);
-      audioManager.play('CLICK');
-  };
-
-  const handleReset = () => {
-      audioManager.play('CLICK');
-      setGameState('IDLE');
-      setBets({});
-      setResultMessage({ text: '', type: null });
-      setActiveMenuNum(null);
-  };
-
-  const handleRoll = async () => {
-      if (totalBet === 0) {
-          alert("Place a bet on at least one number!");
-          return;
-      }
-
-      // 1. Priority Check: Insufficient Funds
-      if (user.wallet.balance < totalBet) {
-          audioManager.play('LOSS');
-          setShowLowBalanceModal(true);
-          return;
-      }
-
-      // Deduct Funds
-      setUser(prev => ({
-          ...prev,
-          wallet: { ...prev.wallet, balance: prev.wallet.balance - totalBet }
-      }));
-
-      setGameState('ROLLING');
-      audioManager.play('ROLL');
-      setResultMessage({ text: '', type: null });
-      setActiveMenuNum(null); // Close any open menus
-
-      // Start Visual Rolling Animation
-      let animationRolls = 0;
-      const animationInterval = setInterval(() => {
-          setDiceValue(Math.floor(Math.random() * 6) + 1);
-          animationRolls++;
-      }, 100);
-
+  // Local state for registered users (Persistent Database)
+  // UPDATED KEY to 'app_users_v3' to clear old cached admins
+  const [registeredUsers, setRegisteredUsers] = useState<User[]>(() => {
       try {
-          let finalVal = 1;
-          const shouldUseApi = isOnline && !localFallback;
-
-          // --- HOUSE EDGE LOGIC ---
-          // If player covers ALL options (selects all 6), force the result to be 1.
-          if (Object.keys(bets).length === 6) {
-              finalVal = 1;
-              setTimeout(() => {
-                  clearInterval(animationInterval);
-                  finalizeGame(finalVal);
-              }, 1500);
-              return;
+          const saved = localStorage.getItem('app_users_v3');
+          if (saved) {
+              return JSON.parse(saved);
           }
-          
-          if (shouldUseApi) {
-              try {
-                  const playersPayload = [
-                      { uid: user.id, displayName: user.name },
-                      { uid: 'dealer-bot', displayName: 'Dealer' } 
-                  ];
+          return DEFAULT_USERS;
+      } catch {
+          return DEFAULT_USERS;
+      }
+  });
 
-                  const apiResponse = await gameApi.rollDice(playersPayload);
-                  
-                  if (Array.isArray(apiResponse)) {
-                      const myResult = apiResponse.find((r: any) => r.uid === user.id);
-                      if (myResult && typeof myResult.rollDiceResult === 'number') {
-                          finalVal = myResult.rollDiceResult;
-                      } else {
-                          finalVal = Math.floor(Math.random() * 6) + 1;
-                      }
-                  } else {
-                       finalVal = Math.floor(Math.random() * 6) + 1;
+  // Current Logged In User
+  const [currentUser, setCurrentUser] = useState<User>({
+      id: '',
+      name: '',
+      email: '',
+      wallet: { balance: 0, totalDeposited: 0, totalWithdrawn: 0 },
+      avatarUrl: '',
+      role: 'USER',
+      stats: { gamesPlayed: 0, gamesWon: 0, totalWagered: 0, totalWon: 0 },
+      withdrawalLimits: { countThisWeek: 0, lastWithdrawalDate: new Date().toISOString() }
+  });
+
+  const [history, setHistory] = useState<GameRecord[]>([]);
+  
+  // Transaction History State
+  const [transactions, setTransactions] = useState<Transaction[]>(() => {
+    try {
+        const savedTx = localStorage.getItem('app_transactions');
+        return savedTx ? JSON.parse(savedTx) : [];
+    } catch {
+        return [];
+    }
+  });
+
+  // --- EFFECTS ---
+
+  // 1. Splash Screen
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 5500); // Increased to 5.5 seconds
+    return () => clearTimeout(timer);
+  }, []);
+
+  // 2. Network Listener
+  useEffect(() => {
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+      };
+  }, []);
+
+  // 3. Persist Transactions
+  useEffect(() => {
+      localStorage.setItem('app_transactions', JSON.stringify(transactions));
+  }, [transactions]);
+
+  // 4. Persist Language
+  useEffect(() => {
+      localStorage.setItem('app_language', language);
+  }, [language]);
+
+  // 5. Persist Users (The Database)
+  useEffect(() => {
+      localStorage.setItem('app_users_v3', JSON.stringify(registeredUsers));
+  }, [registeredUsers]);
+
+  // 6. Sync Active User State to Database (Critical for Wallet Persistence)
+  useEffect(() => {
+      if (isAuthenticated && currentUser && currentUser.id) {
+          setRegisteredUsers(prevUsers => {
+              const index = prevUsers.findIndex(u => u.id === currentUser.id);
+              // Only update if the user exists and data has changed
+              if (index > -1) {
+                  const dbUser = prevUsers[index];
+                  // Simple equality check to avoid infinite loops
+                  if (JSON.stringify(dbUser) !== JSON.stringify(currentUser)) {
+                      const newUsers = [...prevUsers];
+                      newUsers[index] = currentUser;
+                      return newUsers;
                   }
-              } catch (e) {
-                  console.warn("API Roll Failed, switching to local RNG", e);
-                  setLocalFallback(true);
-                  finalVal = Math.floor(Math.random() * 6) + 1;
               }
-          } else {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              finalVal = Math.floor(Math.random() * 6) + 1;
-          }
-
-          setTimeout(() => {
-              clearInterval(animationInterval);
-              finalizeGame(finalVal);
-          }, 1500);
-
-      } catch (e) {
-          clearInterval(animationInterval);
-          finalizeGame(Math.floor(Math.random() * 6) + 1);
+              return prevUsers;
+          });
+          // Also update session marker
+          localStorage.setItem('last_active_user_id', currentUser.id);
       }
-  };
-
-  const finalizeGame = (finalValue: number) => {
-      setDiceValue(finalValue);
-      setGameState('RESULT');
-
-      // Rule: Number 1 is strictly House Property.
-      const isHouseWin = finalValue === 1;
-      
-      const winningBetAmount = bets[finalValue] || 0;
-      const isWin = !isHouseWin && winningBetAmount > 0;
-      
-      if (isWin) {
-          const winAmount = winningBetAmount * MULTIPLIER;
+  }, [currentUser, isAuthenticated]);
+  
+  // 7. Presence Tracking (Mocked)
+  useEffect(() => {
+      if (isAuthenticated && currentUser.id && isOnline) {
+          trackLiveUsers(currentUser.id, currentUser.name);
           
-          setUser(prev => ({
-              ...prev,
-              wallet: { 
-                  ...prev.wallet, 
-                  balance: prev.wallet.balance + winAmount,
-                  totalDeposited: prev.wallet.totalDeposited 
-              }
-          }));
-          audioManager.play('WIN');
-          setResultMessage({ text: `WIN +${winAmount.toLocaleString()}`, type: 'WIN' });
-      } else {
-          audioManager.play('LOSS');
-          if (isHouseWin) {
-              setResultMessage({ text: 'HOUSE WINS (#1)', type: 'LOSS' });
-          } else {
-              setResultMessage({ text: 'LOSS', type: 'LOSS' });
+          const interval = setInterval(() => {
+              trackLiveUsers(currentUser.id, currentUser.name);
+          }, 30000);
+          
+          return () => clearInterval(interval);
+      }
+  }, [isAuthenticated, currentUser.id, currentUser.name, trackLiveUsers, isOnline]);
+
+  // 8. Auto-Login on Mount
+  useEffect(() => {
+      const lastId = localStorage.getItem('last_active_user_id');
+      if (lastId && !isAuthenticated) {
+          const user = registeredUsers.find(u => u.id === lastId);
+          if (user) {
+              console.log("Auto-logging in user from local storage:", user.name);
+              setCurrentUser(user);
+              setIsAuthenticated(true);
+              setIsAdmin(user.role === 'ADMIN');
+              setCurrentScreen(user.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
           }
       }
+  }, []); // Run once on mount
 
-      addHistory({
-          id: Date.now().toString(),
-          date: new Date().toLocaleTimeString(),
-          betAmount: totalBet,
-          userScore: 0,
-          opponentScore: finalValue,
-          result: isWin ? 'WIN' : 'LOSS'
-      });
+
+  const addHistory = (record: GameRecord) => {
+    setHistory(prev => [...prev, record]);
   };
 
-  return (
-    <div className="flex flex-col h-screen w-full bg-[#111] overflow-hidden animate-fade-in text-white font-body select-none" onClick={() => { if(activeMenuNum !== null) setActiveMenuNum(null); }}>
-      
-      {/* 1. TOP BAR */}
-      <div className="shrink-0 h-[60px] px-4 flex items-center justify-between bg-[#0B0C10] border-b border-gray-800 z-50">
-        <button onClick={() => setScreen(Screen.HOME)} className="text-gray-400 hover:text-white transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-        <div className="flex flex-col items-center">
-             <span className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">BALANCE</span>
-             <span className="font-digital text-neon text-xl font-bold tracking-wider leading-none">
-                {user.wallet.balance.toLocaleString()}
-             </span>
-        </div>
-        <div className="flex items-center gap-2">
-            {(!isOnline || localFallback) && <WifiOff size={16} className="text-red-500" title="Offline Mode" />}
-            <button onClick={toggleMute} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white">
-                {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-            </button>
-        </div>
-      </div>
+  const addTransaction = (tx: Transaction) => {
+      setTransactions(prev => [tx, ...prev]);
+  };
 
-      {/* 2. GAME AREA */}
-      <div className="flex-1 relative w-full flex flex-col items-center justify-start bg-[#0B0C10] p-4 pt-12 md:pt-20 overflow-y-auto gap-6">
-         
-         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-[#1F2833] via-[#0B0C10] to-[#000000] opacity-50 pointer-events-none"></div>
+  /**
+   * Wrapper for screen navigation to handle history
+   */
+  const handleSetScreen = (screen: Screen) => {
+      // If we are navigating TO the wallet, remember where we came from
+      if (screen === Screen.WALLET) {
+          setReturnScreen(currentScreen);
+      }
+      setCurrentScreen(screen);
+  };
 
-         {/* Dice Rolling Area */}
-         <div className="shrink-0 z-20 w-full flex flex-col items-center justify-center h-40 relative">
-             <div className="w-24 h-24 bg-[#E8DCC4] rounded-xl border-4 border-black flex items-center justify-center shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative overflow-visible">
-                 <Dice value={diceValue} isRolling={gameState === 'ROLLING'} color="danger" size="md" />
-             </div>
-             
-             {/* Result Message */}
-             {gameState === 'RESULT' && (
-                 <div className={`mt-6 px-6 py-2 border-2 font-black text-xl uppercase tracking-widest animate-bounce-small shadow-lg absolute -bottom-4 z-30 whitespace-nowrap ${
-                     resultMessage.type === 'WIN' 
-                     ? 'bg-gold text-black border-white' 
-                     : 'bg-red-500 text-white border-red-700'
-                 }`}>
-                     {resultMessage.text}
-                 </div>
-             )}
-         </div>
+  /**
+   * Helper to Map API User Response to Frontend User Type
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapApiUserToState = (apiData: any): User => {
+      return {
+          id: apiData.uid || apiData.id || Date.now().toString(),
+          name: apiData.displayName || apiData.name || 'Unknown User',
+          email: apiData.email || '',
+          phone: apiData.phone || apiData.phoneNumber || '',
+          password: apiData.password, // Keep password for local auth check if needed later
+          role: apiData.role ? (apiData.role.toUpperCase() as 'USER' | 'ADMIN') : 'USER',
+          avatarUrl: apiData.photoURL || `https://ui-avatars.com/api/?name=${apiData.displayName || 'User'}&background=random`,
+          wallet: apiData.wallet || {
+              balance: apiData.balance || 0, 
+              totalDeposited: 0,
+              totalWithdrawn: 0
+          },
+          stats: apiData.stats || {
+              gamesPlayed: 0,
+              gamesWon: 0,
+              totalWagered: 0,
+              totalWon: 0
+          },
+          withdrawalLimits: apiData.withdrawalLimits || {
+              countThisWeek: 0,
+              lastWithdrawalDate: new Date().toISOString()
+          },
+          isBlocked: apiData.isBlocked || false
+      };
+  };
 
-         {/* THE BOARD */}
-         <div className="relative w-full max-w-[400px] z-10 p-4 rounded bg-[#8B5A2B] shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-b-8 border-r-8 border-[#5C3A1E]">
-             
-             {/* The Grid */}
-             <div className="grid grid-cols-3 grid-rows-2 gap-2 bg-black border-4 border-black aspect-[4/3]">
-                 {[1, 2, 3, 4, 5, 6].map((num) => {
-                     const myBet = bets[num];
-                     const isSelected = myBet !== undefined;
-                     const isWinningNum = gameState === 'RESULT' && diceValue === num;
-                     const isMenuOpen = activeMenuNum === num;
-                     
-                     // Determine Row: 1,2,3 is Top Row. 4,5,6 is Bottom Row.
-                     const isTopRow = num <= 3;
+  // Handle Registration Success
+  const handleRegisterSuccess = async (partialUser: Partial<User>) => {
+    const newUser = mapApiUserToState(partialUser);
+    
+    // Save to local database for cache
+    setRegisteredUsers(prev => [...prev, newUser]);
+    
+    setCurrentUser(newUser);
+    setIsAuthenticated(true);
+    setIsAdmin(newUser.role === 'ADMIN');
+    handleSetScreen(newUser.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+    
+    return true;
+  };
 
-                     return (
-                        <div 
-                            key={num} 
-                            className="relative w-full h-full"
-                            onMouseEnter={() => {
-                                // Desktop Hover Logic
-                                if (gameState === 'IDLE' && window.matchMedia('(hover: hover)').matches) {
-                                    setActiveMenuNum(num);
-                                }
-                            }}
-                            onMouseLeave={() => {
-                                // Desktop Hover Logic
-                                if (gameState === 'IDLE' && window.matchMedia('(hover: hover)').matches) {
-                                    setActiveMenuNum(null);
-                                }
-                            }}
-                        >
-                            {/* Betting Menu Popover */}
-                            {isMenuOpen && (
-                                <div className={`
-                                    absolute left-1/2 -translate-x-1/2 z-[60] flex flex-col bg-black/95 backdrop-blur-md border border-gray-700 rounded-xl p-2 shadow-[0_0_30px_rgba(0,0,0,0.8)] animate-fade-in-up min-w-[160px]
-                                    ${isTopRow ? 'top-[80%]' : 'bottom-[80%]'}
-                                `}>
-                                    
-                                    {/* Mode Toggle */}
-                                    <div className="flex p-1 bg-gray-900 rounded-lg mb-2 border border-gray-800">
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); setBetMode('STD'); }}
-                                            className={`flex-1 text-[10px] font-bold py-1.5 rounded transition-all ${betMode === 'STD' ? 'bg-neon text-black shadow-[0_0_10px_#66FCF1]' : 'text-gray-500 hover:text-white'}`}
-                                        >
-                                            STD
-                                        </button>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); setBetMode('VIP'); }}
-                                            className={`flex-1 text-[10px] font-bold py-1.5 rounded transition-all flex items-center justify-center gap-1 ${betMode === 'VIP' ? 'bg-gold text-black shadow-[0_0_10px_#FFD700]' : 'text-gray-500 hover:text-white'}`}
-                                        >
-                                            <Crown size={10} /> VIP
-                                        </button>
-                                    </div>
+  // Handle Login
+  const handleLogin = async (identifier: string, pass: string): Promise<boolean> => {
+    try {
+        // 1. API Login First (Priority if Online)
+        if (isOnline) {
+            try {
+                // authApi.login expects phone number usually, but we pass identifier
+                const response = await authApi.login(identifier, pass);
+                const userData = response.data || response;
+                
+                if (userData) {
+                    let mappedUser = mapApiUserToState(userData);
 
-                                    {/* Options Grid */}
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {(betMode === 'STD' ? BET_OPTIONS_STD : BET_OPTIONS_VIP).map(amount => (
-                                            <button 
-                                                key={amount}
-                                                onClick={(e) => handleSelectBet(e, num, amount)}
-                                                className={`
-                                                    py-2 px-1 rounded text-white font-digital font-bold text-sm transition-colors border
-                                                    ${betMode === 'VIP' 
-                                                        ? 'bg-gold/10 border-gold/30 hover:bg-gold hover:text-black' 
-                                                        : 'bg-gray-800 border-gray-700 hover:bg-neon hover:text-black'
-                                                    }
-                                                `}
-                                            >
-                                                {amount}
-                                            </button>
-                                        ))}
+                    // --- PERSISTENCE FIX: PRESERVE LOCAL WALLET ---
+                    // If the API returns a fresh/stateless user, we want to keep the local balance 
+                    // to ensure user progress isn't lost on login/restart.
+                    const existingLocalUser = registeredUsers.find(u => 
+                        u.id === mappedUser.id || u.email === mappedUser.email
+                    );
 
-                                        {/* Custom Amount Input Link */}
-                                        <div className="col-span-2 mt-1">
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setScreen(Screen.WALLET); }}
-                                                className="w-full bg-gray-800 border border-gray-600 rounded py-2 px-2 flex items-center justify-between group hover:border-neon hover:bg-gray-700 transition-all"
-                                            >
-                                                <span className="text-[10px] text-gray-400 group-hover:text-white">Custom Amount...</span>
-                                                <ArrowRight size={12} className="text-gray-500 group-hover:text-neon" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Triangle Pointer */}
-                                    {isTopRow ? (
-                                        // Point UP (Menu is below)
-                                        <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-gray-700"></div>
-                                    ) : (
-                                        // Point DOWN (Menu is above)
-                                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-gray-700"></div>
-                                    )}
-                                </div>
-                            )}
+                    if (existingLocalUser) {
+                        console.log("Preserving local wallet for user:", mappedUser.name);
+                        mappedUser = {
+                            ...mappedUser,
+                            wallet: existingLocalUser.wallet,
+                            stats: existingLocalUser.stats,
+                            withdrawalLimits: existingLocalUser.withdrawalLimits
+                        };
+                    }
+                    // ----------------------------------------------
 
-                            <button
-                                onMouseDown={() => handleTouchStart(num)}
-                                onMouseUp={(e) => handleTouchEnd(e, num)}
-                                onTouchStart={() => handleTouchStart(num)}
-                                onTouchEnd={(e) => handleTouchEnd(e, num)}
-                                onContextMenu={(e) => e.preventDefault()}
-                                disabled={gameState === 'ROLLING' || gameState === 'RESULT'}
-                                className={`
-                                    w-full h-full relative flex items-center justify-center transition-all duration-100
-                                    ${isSelected ? 'bg-black text-white' : 'bg-[#E8DCC4] hover:bg-[#D8CCB4] text-black'}
-                                    ${isWinningNum ? '!bg-gold !text-black animate-pulse' : ''}
-                                    active:scale-95
-                                `}
-                            >
-                                <span className="font-sans font-bold text-6xl md:text-7xl leading-none select-none pointer-events-none">
-                                    {num}
-                                </span>
-                                
-                                {/* Bet Indicator (Chip) */}
-                                {isSelected && (
-                                    <div className={`absolute top-1 right-1 sm:top-2 sm:right-2 border border-black shadow-lg rounded px-1.5 py-0.5 min-w-[40px] flex items-center justify-center animate-fade-in z-10 pointer-events-none ${myBet >= 1000 ? 'bg-gold text-black' : 'bg-neon text-black'}`}>
-                                        <span className="text-[10px] sm:text-xs font-black font-digital leading-none">
-                                            {myBet}
-                                        </span>
-                                    </div>
-                                )}
-                            </button>
-                        </div>
-                     );
-                 })}
-             </div>
-         </div>
-         
-         <div className="flex items-center gap-2 text-gray-500 mt-2">
-             <Hand size={14} className="animate-bounce" />
-             <p className="text-xs font-mono tracking-widest uppercase text-center">
-                 HOVER OR LONG PRESS TO BET
-             </p>
-         </div>
+                    if (mappedUser.isBlocked) {
+                        throw new Error("Account is blocked. Contact support.");
+                    }
 
-      </div>
+                    // Update local cache
+                    setRegisteredUsers(prev => {
+                        const exists = prev.findIndex(u => u.id === mappedUser.id);
+                        if (exists > -1) {
+                            const newArr = [...prev];
+                            newArr[exists] = mappedUser; // Update existing
+                            return newArr;
+                        }
+                        return [...prev, mappedUser]; // Add new
+                    });
 
-      {/* 3. CONTROL PANEL */}
-      <div className="shrink-0 bg-[#0B0C10] border-t border-gray-800 p-4 pb-safe z-50">
-          <div className="max-w-md mx-auto flex flex-col gap-4">
-              
-              <div className="flex justify-between items-center bg-[#151a21] p-3 rounded-xl border border-gray-800">
-                  <div className="flex flex-col">
-                      <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Total Wager</span>
-                      <span className={`font-digital font-bold text-2xl ${totalBet > 0 ? 'text-neon' : 'text-gray-600'}`}>
-                          {totalBet.toLocaleString()} CFA
-                      </span>
-                  </div>
-                  {totalBet > 0 && (
-                      <div className="flex flex-col items-end">
-                           <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Potential Win</span>
-                           <span className="font-digital font-bold text-xl text-gold">
-                              {(Math.max(...(Object.values(bets) as number[])) * MULTIPLIER).toLocaleString()} CFA
-                           </span>
-                      </div>
-                  )}
-              </div>
+                    setCurrentUser(mappedUser);
+                    setIsAuthenticated(true);
+                    setIsAdmin(mappedUser.role === 'ADMIN');
+                    handleSetScreen(mappedUser.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+                    return true;
+                }
+            } catch (e: any) {
+                 console.warn("API Login failed:", e.message);
+                 // If API explicitly fails (401/403), do not fallback to local unless network error
+                 if (e.message.includes('Invalid') || e.message.includes('password')) {
+                     throw e;
+                 }
+            }
+        }
 
-              {/* Action Button */}
-              {gameState === 'RESULT' ? (
-                  <NeonButton 
-                        fullWidth 
-                        variant="secondary" 
-                        onClick={handleReset} 
-                        className="h-14 text-xl tracking-widest font-black"
-                    >
-                        <RefreshCw size={24} className="mr-2" /> TRY AGAIN
-                  </NeonButton>
-              ) : (
-                  <NeonButton 
-                        fullWidth 
-                        variant="primary" 
-                        onClick={handleRoll} 
-                        disabled={gameState === 'ROLLING'}
-                        className="h-14 text-xl tracking-widest font-black"
-                    >
-                        {gameState === 'ROLLING' ? 'ROLLING...' : `START GAME`}
-                  </NeonButton>
-              )}
-          </div>
-      </div>
+        // 2. Fallback to Local Storage (Only if Offline or API failed due to connection)
+        const localUser = registeredUsers.find(u => 
+            (u.name === identifier || u.email === identifier || u.phone === identifier) &&
+            (u.password === pass)
+        );
 
-      {/* MODALS */}
-      {showLowBalanceModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
-            <div className="bg-[#151a21] border border-red-500/50 p-6 rounded-2xl w-full max-w-sm text-center shadow-[0_0_30px_rgba(255,76,76,0.2)]">
-                <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500">
-                    <Wallet size={32} className="text-red-500" />
-                </div>
-                <h3 className="text-white font-title text-xl mb-2">Insufficient Funds</h3>
-                <p className="text-gray-400 text-sm mb-6">
-                    Total bet is <span className="text-white font-bold">{totalBet.toLocaleString()} CFA</span>.
-                </p>
-                <div className="flex gap-3">
-                    <button onClick={() => setShowLowBalanceModal(false)} className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-400 hover:text-white transition-colors">Cancel</button>
-                    <NeonButton variant="primary" className="flex-1" onClick={() => setScreen(Screen.WALLET)}>DEPOSIT</NeonButton>
-                </div>
+        if (localUser) {
+            if (localUser.isBlocked) throw new Error("Account is blocked.");
+            
+            console.log("Logged in via Local Storage (Offline Mode)");
+            setCurrentUser(localUser);
+            setIsAuthenticated(true);
+            setIsAdmin(localUser.role === 'ADMIN');
+            handleSetScreen(localUser.role === 'ADMIN' ? Screen.ADMIN : Screen.HOME);
+            return true;
+        }
+        
+        throw new Error("Invalid credentials.");
+
+    } catch (error: any) {
+        console.error("Login Error:", error);
+        throw error;
+    }
+  };
+
+  const handleLogout = () => {
+      localStorage.removeItem('last_active_user_id');
+      setIsAuthenticated(false);
+      setIsAdmin(false);
+      handleSetScreen(Screen.LOGIN);
+  };
+
+  // Global User Management Handlers (Admin)
+  const handleUpdateUser = (updatedUser: User) => {
+    // Update local persistence
+    setRegisteredUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    
+    // If Admin edited the currently logged-in user (self), update session state
+    if (currentUser.id === updatedUser.id) {
+        setCurrentUser(updatedUser);
+    }
+  };
+
+  const handleDeleteUser = (userId: string) => {
+      setRegisteredUsers(prev => prev.filter(u => u.id !== userId));
+      if (currentUser.id === userId) {
+          handleLogout();
+      }
+  };
+
+  // --- RENDER LOGIC ---
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#0B0C10] flex flex-col items-center justify-center overflow-hidden">
+         {/* Background Image */}
+         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1596838132731-3301c3fd4317?q=80&w=2940&auto=format&fit=crop')] bg-cover bg-center opacity-30"></div>
+         <div className="absolute inset-0 bg-gradient-to-t from-[#0B0C10] via-transparent to-[#0B0C10]"></div>
+
+         <div className="relative z-10 flex flex-col items-center animate-fade-in-up">
+            <div className="w-24 h-24 mb-6 bg-neon/10 rounded-full flex items-center justify-center border border-neon shadow-[0_0_50px_rgba(102,252,241,0.4)] animate-pulse-fast">
+              <Dices size={48} className="text-neon" />
             </div>
-        </div>
-      )}
-    </div>
-  );
+            <h1 className="font-title text-4xl md:text-6xl text-white mb-2 tracking-tight">
+              DICE <span className="text-neon">WORLD</span>
+            </h1>
+            <p className="text-gold font-digital text-lg md:text-xl tracking-widest uppercase mb-8">
+              by Big Size Entertainment
+            </p>
+            <div className="flex items-center gap-3 text-textMuted text-sm">
+               <Loader2 className="animate-spin text-neon" size={18} />
+               <span>Loading Experience...</span>
+            </div>
+         </div>
+      </div>
+    );
+  }
+
+  const renderScreen = () => {
+    // Unauthenticated Routes
+    if (!isAuthenticated) {
+        if (currentScreen === Screen.REGISTER) {
+            return <RegisterScreen setScreen={handleSetScreen} onRegister={handleRegisterSuccess} />;
+        }
+        return <LoginScreen onLogin={handleLogin} setScreen={handleSetScreen} language={language}/>;
+    }
+
+    // Admin Dashboard Screen (Isolated from Layout)
+    if (currentScreen === Screen.ADMIN) {
+        return (
+            <AdminDashboard 
+                onLogout={handleLogout} 
+                commissionRate={commissionRate}
+                setCommissionRate={setCommissionRate}
+                onEnterGame={() => handleSetScreen(Screen.HOME)}
+                users={registeredUsers} 
+                onUpdateUser={handleUpdateUser}
+                onDeleteUser={handleDeleteUser}
+                masterTransactions={transactions}
+                addTransaction={addTransaction}
+            />
+        );
+    }
+
+    // Authenticated User Routes (Wrapped in Layout)
+    switch (currentScreen) {
+      case Screen.HOME:
+        return (
+          <HomeScreen 
+            user={currentUser} 
+            setScreen={handleSetScreen} 
+          />
+        );
+      case Screen.GAME:
+        return (
+          <GameScreen 
+            user={currentUser} 
+            setUser={setCurrentUser} 
+            betAmount={betAmount}
+            setBetAmount={setBetAmount}
+            playerCount={playerCount}
+            setPlayerCount={setPlayerCount}
+            addHistory={addHistory} 
+            setScreen={handleSetScreen}
+            commissionRate={commissionRate}
+            isOnline={isOnline}
+          />
+        );
+      case Screen.DICE_TABLE:
+          return (
+             <DiceTableScreen 
+                user={currentUser}
+                setUser={setCurrentUser}
+                setScreen={handleSetScreen}
+                addHistory={addHistory}
+                isOnline={isOnline}
+             />
+          );
+      case Screen.WALLET:
+        return (
+          <WalletScreen 
+            user={currentUser} 
+            setScreen={handleSetScreen} 
+            setUser={setCurrentUser}
+            transactions={transactions}
+            addTransaction={addTransaction}
+            returnScreen={returnScreen}
+          />
+        );
+      case Screen.HISTORY:
+        return <HistoryScreen history={history} setScreen={handleSetScreen} />;
+      case Screen.PROFILE:
+        return (
+            <ProfileScreen 
+                user={currentUser} 
+                setUser={setCurrentUser}
+                setScreen={handleSetScreen} 
+                onLogout={handleLogout}
+                onUpdateUser={handleUpdateUser}
+                language={language}
+                setLanguage={setLanguage}
+            />
+        );
+      default:
+        return <HomeScreen 
+            user={currentUser} 
+            setScreen={handleSetScreen} 
+        />;
+    }
+  };
+
+  // Wrap User screens in Layout, but return Admin/Auth screens directly
+  if (isAuthenticated && currentScreen !== Screen.ADMIN) {
+      return (
+        <Layout 
+            currentScreen={currentScreen} 
+            setScreen={handleSetScreen} 
+            isAdmin={isAdmin} 
+            onLogout={handleLogout}
+            language={language}
+            isOnline={isOnline}
+            setIsOnline={setIsOnline}
+        >
+            {renderScreen()}
+        </Layout>
+      );
+  }
+
+  return renderScreen();
 };
 
-export default DiceTableScreen;
+export default App;
