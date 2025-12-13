@@ -305,9 +305,6 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                      const isWinningNum = gameState === 'RESULT' && diceValue === num;
                      const isMenuOpen = activeMenuNum === num;
                      
-                     // Determine Row: 1,2,3 is Top Row. 4,5,6 is Bottom Row.
-                     const isTopRow = num <= 3;
-
                      return (
                         <div 
                             key={num} 
@@ -330,7 +327,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                                 <div 
                                     className={`
                                         absolute left-1/2 -translate-x-1/2 z-[60] flex flex-col bg-black/95 backdrop-blur-md border border-gray-700 rounded-xl p-2 shadow-[0_0_30px_rgba(0,0,0,0.8)] animate-fade-in-up min-w-[170px]
-                                        ${isTopRow ? 'top-[80%]' : 'bottom-[80%]'}
+                                        top-[80%]
                                     `}
                                     onClick={(e) => e.stopPropagation()}
                                 >
@@ -388,14 +385,8 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                                         </button>
                                     </div>
 
-                                    {/* Triangle Pointer */}
-                                    {isTopRow ? (
-                                        // Point UP (Menu is below)
-                                        <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-gray-700"></div>
-                                    ) : (
-                                        // Point DOWN (Menu is above)
-                                        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-gray-700"></div>
-                                    )}
+                                    {/* Triangle Pointer - Always Point UP because menu is below */}
+                                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-gray-700"></div>
                                 </div>
                             )}
 
