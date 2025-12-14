@@ -1,27 +1,32 @@
+
 import React from 'react';
 import { GameRecord, Screen } from '../types';
 import { ChevronLeft, Trophy, Frown, Minus } from 'lucide-react';
+import { translate } from '../utils/i18n';
 
 interface HistoryScreenProps {
   history: GameRecord[];
   setScreen: (screen: Screen) => void;
+  language?: string;
 }
 
-const HistoryScreen: React.FC<HistoryScreenProps> = ({ history, setScreen }) => {
+const HistoryScreen: React.FC<HistoryScreenProps> = ({ history, setScreen, language = 'English' }) => {
+  const t = (key: string) => translate(key, language);
+
   return (
     <div className="flex flex-col h-full bg-background animate-fade-in">
       <div className="p-4 flex items-center bg-panel border-b border-gray-800 sticky top-0 z-20">
         <button onClick={() => setScreen(Screen.HOME)} className="text-textMuted hover:text-white mr-4">
           <ChevronLeft size={24} />
         </button>
-        <h1 className="font-title text-white text-lg">Game History</h1>
+        <h1 className="font-title text-white text-lg">{t('Game History')}</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {history.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-textMuted opacity-50">
                 <Trophy size={48} className="mb-2" />
-                <p>No games played yet.</p>
+                <p>{t('No Games Played')}</p>
             </div>
         ) : (
             history.map((game) => (
@@ -36,7 +41,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ history, setScreen }) => 
                         <div>
                             <p className="text-xs text-textMuted font-digital">{game.date}</p>
                             <p className="text-white font-bold text-sm">
-                                {game.result === 'WIN' ? 'VICTORY' : game.result === 'LOSS' ? 'DEFEAT' : 'DRAW'}
+                                {game.result === 'WIN' ? t('Victory') : game.result === 'LOSS' ? t('Defeat') : t('Draw')}
                             </p>
                         </div>
                     </div>
@@ -45,7 +50,7 @@ const HistoryScreen: React.FC<HistoryScreenProps> = ({ history, setScreen }) => 
                             {game.result === 'WIN' ? `+${(game.betAmount).toLocaleString()}` : `-${game.betAmount.toLocaleString()}`}
                         </p>
                         <p className="text-[10px] text-textMuted">
-                            Score: {game.userScore} - {game.opponentScore}
+                            {t('Score')}: {game.userScore} - {game.opponentScore}
                         </p>
                     </div>
                 </div>

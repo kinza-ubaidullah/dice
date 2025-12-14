@@ -3,16 +3,19 @@ import React from 'react';
 import { User, Screen } from '../types';
 import { Play, Wallet, Trophy, Flame, Star, Dices as DiceIcon, Plus } from 'lucide-react';
 import Dice from '../components/Dice';
+import { translate } from '../utils/i18n';
 
 interface HomeScreenProps {
   user: User;
   setScreen: (screen: Screen) => void;
+  language?: string;
 }
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ 
-    user, setScreen 
+    user, setScreen, language = 'English' 
 }) => {
-  
+  const t = (key: string) => translate(key, language);
+
   return (
     <div className="flex flex-col min-h-full p-4 md:p-8 animate-fade-in gap-6 bg-[url('https://www.transparenttextures.com/patterns/dark-matter.png')]">
       
@@ -30,7 +33,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
             <h1 className="text-white font-title text-lg md:text-2xl tracking-wider uppercase">{user.name}</h1>
             <div className="flex items-center gap-2 text-gold">
                 <Trophy size={14} />
-                <span className="text-xs md:text-sm font-bold">Pro Member</span>
+                <span className="text-xs md:text-sm font-bold">{t('Pro Member')}</span>
             </div>
           </div>
         </div>
@@ -47,8 +50,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
             </div>
             <div className="text-right flex-1">
                 <p className="text-textMuted text-xs font-bold uppercase tracking-widest flex justify-end gap-1 items-center">
-                    Wallet Balance 
-                    {user.wallet.balance <= 0 && <span className="text-[9px] text-neon bg-neon/10 px-1 rounded animate-pulse">TOP UP</span>}
+                    {t('Wallet Balance')} 
+                    {user.wallet.balance <= 0 && <span className="text-[9px] text-neon bg-neon/10 px-1 rounded animate-pulse">{t('Top Up')}</span>}
                 </p>
                 <p className="text-neon font-digital text-2xl md:text-3xl font-bold tracking-wider group-hover:text-white transition-colors">
                     {user.wallet.balance.toLocaleString()} CFA
@@ -63,7 +66,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
       {/* Trending Games */}
       <div>
         <h2 className="font-title text-white text-lg mb-4 flex items-center gap-2">
-            <Flame className="text-red-500" /> TRENDING GAMES
+            <Flame className="text-red-500" /> {t('Trending Games')}
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Casino Dice (Existing Game) */}
@@ -93,7 +96,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
       {/* Featured Game */}
       <div>
         <h2 className="font-title text-white text-lg mb-4 flex items-center gap-2">
-            <Star className="text-neon" /> FEATURED GAMES
+            <Star className="text-neon" /> {t('Featured Games')}
         </h2>
         <div className="relative rounded-3xl overflow-hidden border border-neon/30 group cursor-pointer" onClick={() => setScreen(Screen.GAME)}>
             <div className="absolute inset-0 bg-gradient-to-r from-black via-transparent to-black z-10"></div>
@@ -105,9 +108,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
 
                 <div className="relative z-20 space-y-4">
                     <h3 className="font-title text-3xl md:text-5xl text-white italic">CASINO DICE</h3>
-                    <p className="text-textMuted max-w-[200px] text-sm md:text-base">Experience the thrill of high stakes rolling.</p>
+                    <p className="text-textMuted max-w-[200px] text-sm md:text-base">{t('Experience Thrill')}</p>
                     <button className="bg-neon text-black font-bold py-2 px-6 rounded-lg hover:shadow-[0_0_20px_#66FCF1] transition-shadow">
-                        Play Now
+                        {t('Play Now')}
                     </button>
                 </div>
                 
@@ -123,7 +126,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* All Games Grid */}
       <div>
-        <h2 className="font-title text-white text-lg mb-4">ALL GAMES</h2>
+        <h2 className="font-title text-white text-lg mb-4">{t('All Games')}</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
              {[1,2,3,4].map((i) => (
                 <div key={i} onClick={() => setScreen(Screen.GAME)} className="bg-panel border border-gray-800 rounded-xl p-4 flex flex-col items-center gap-3 cursor-pointer hover:bg-white/5 transition-colors">

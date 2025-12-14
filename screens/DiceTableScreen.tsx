@@ -6,6 +6,7 @@ import Dice from '../components/Dice';
 import NeonButton from '../components/NeonButton';
 import { audioManager } from '../utils/audio';
 import { gameApi } from '../utils/api';
+import { translate } from '../utils/i18n';
 
 interface DiceTableScreenProps {
   user: User;
@@ -13,9 +14,10 @@ interface DiceTableScreenProps {
   setScreen: (screen: Screen) => void;
   addHistory: (record: GameRecord) => void;
   isOnline?: boolean;
+  language: string;
 }
 
-const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScreen, addHistory, isOnline = true }) => {
+const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScreen, addHistory, isOnline = true, language }) => {
   // State for individual bets: { [diceNumber]: betAmount }
   const [bets, setBets] = useState<Record<number, number>>({});
   const [activeMenuNum, setActiveMenuNum] = useState<number | null>(null);
@@ -134,10 +136,15 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
           return;
       }
 
-      // Deduct Funds
+      // Deduct Funds & Update Stats (Wagered + Played)
       setUser(prev => ({
           ...prev,
-          wallet: { ...prev.wallet, balance: prev.wallet.balance - totalBet }
+          wallet: { ...prev.wallet, balance: prev.wallet.balance - totalBet },
+          stats: {
+              ...prev.stats,
+              gamesPlayed: prev.stats.gamesPlayed + 1,
+              totalWagered: prev.stats.totalWagered + totalBet
+          }
       }));
 
       setGameState('ROLLING');
@@ -216,28 +223,33 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
       
       const winningBetAmount = bets[finalValue] || 0;
       const isWin = !isHouseWin && winningBetAmount > 0;
+      const winAmount = winningBetAmount * MULTIPLIER;
       
       if (isWin) {
-          const winAmount = winningBetAmount * MULTIPLIER;
-          
-          setUser(prev => ({
-              ...prev,
-              wallet: { 
-                  ...prev.wallet, 
-                  balance: prev.wallet.balance + winAmount,
-                  totalDeposited: prev.wallet.totalDeposited 
-              }
-          }));
           audioManager.play('WIN');
-          setResultMessage({ text: `WIN +${winAmount.toLocaleString()}`, type: 'WIN' });
+          setResultMessage({ text: `${translate('Win Caps', language)} +${winAmount.toLocaleString()}`, type: 'WIN' });
       } else {
           audioManager.play('LOSS');
           if (isHouseWin) {
-              setResultMessage({ text: 'HOUSE WINS (#1)', type: 'LOSS' });
+              setResultMessage({ text: translate('House Wins Specific', language), type: 'LOSS' });
           } else {
-              setResultMessage({ text: 'LOSS', type: 'LOSS' });
+              setResultMessage({ text: translate('Loss Caps', language), type: 'LOSS' });
           }
       }
+
+      // Update User (Wallet + Stats)
+      setUser(prev => ({
+          ...prev,
+          wallet: { 
+              ...prev.wallet, 
+              balance: prev.wallet.balance + (isWin ? winAmount : 0)
+          },
+          stats: {
+              ...prev.stats,
+              gamesWon: isWin ? prev.stats.gamesWon + 1 : prev.stats.gamesWon,
+              totalWon: prev.stats.totalWon + (isWin ? winAmount : 0)
+          }
+      }));
 
       addHistory({
           id: Date.now().toString(),
@@ -258,7 +270,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
           <ChevronLeft size={24} />
         </button>
         <div className="flex flex-col items-center">
-             <span className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">BALANCE</span>
+             <span className="text-[9px] text-gray-500 uppercase tracking-widest font-bold">{translate('Balance Caps', language)}</span>
              <span className="font-digital text-neon text-xl font-bold tracking-wider leading-none">
                 {user.wallet.balance.toLocaleString()}
              </span>
@@ -374,7 +386,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                                             value={customBetInput}
                                             onChange={(e) => setCustomBetInput(e.target.value)}
                                             onKeyDown={(e) => e.key === 'Enter' && handleCustomSubmit(num)}
-                                            placeholder="Custom"
+                                            placeholder={translate('Custom', language)}
                                             className="w-full bg-black/40 border border-gray-600 rounded px-2 py-1.5 text-xs text-white focus:border-neon outline-none font-digital"
                                         />
                                         <button 
@@ -426,7 +438,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
          <div className="flex items-center gap-2 text-gray-500 mt-2">
              <Hand size={14} className="animate-bounce" />
              <p className="text-xs font-mono tracking-widest uppercase text-center">
-                 HOVER OR LONG PRESS TO BET
+                 {translate('Hover Hint', language)}
              </p>
          </div>
 
@@ -438,14 +450,14 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
               
               <div className="flex justify-between items-center bg-[#151a21] p-3 rounded-xl border border-gray-800">
                   <div className="flex flex-col">
-                      <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Total Wager</span>
+                      <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">{translate('Total Wager', language)}</span>
                       <span className={`font-digital font-bold text-2xl ${totalBet > 0 ? 'text-neon' : 'text-gray-600'}`}>
                           {totalBet.toLocaleString()} CFA
                       </span>
                   </div>
                   {totalBet > 0 && (
                       <div className="flex flex-col items-end">
-                           <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Potential Win</span>
+                           <span className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">{translate('Potential Win', language)}</span>
                            <span className="font-digital font-bold text-xl text-gold">
                               {(Math.max(...(Object.values(bets) as number[])) * MULTIPLIER).toLocaleString()} CFA
                            </span>
@@ -461,7 +473,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                         onClick={handleReset} 
                         className="h-14 text-xl tracking-widest font-black"
                     >
-                        <RefreshCw size={24} className="mr-2" /> TRY AGAIN
+                        <RefreshCw size={24} className="mr-2" /> {translate('Try Again', language)}
                   </NeonButton>
               ) : (
                   <NeonButton 
@@ -471,7 +483,7 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                         disabled={gameState === 'ROLLING'}
                         className="h-14 text-xl tracking-widest font-black"
                     >
-                        {gameState === 'ROLLING' ? 'ROLLING...' : `START GAME`}
+                        {gameState === 'ROLLING' ? translate('Rolling Caps', language) : translate('Start Game Caps', language)}
                   </NeonButton>
               )}
           </div>
@@ -484,17 +496,17 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                 <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500">
                     <Wallet size={32} className="text-red-500" />
                 </div>
-                <h3 className="text-white font-title text-xl mb-2">Insufficient Funds</h3>
+                <h3 className="text-white font-title text-xl mb-2">{translate('Insuff Funds', language)}</h3>
                 <p className="text-gray-400 text-sm mb-6">
                     {totalBet > 0 ? (
-                        <>Total bet is <span className="text-white font-bold">{totalBet.toLocaleString()} CFA</span>.</>
+                        <>{translate('Total Bet Is', language)} <span className="text-white font-bold">{totalBet.toLocaleString()} CFA</span>.</>
                     ) : (
-                        <>You need funds to play.</>
+                        <>{translate('Need Funds', language)}</>
                     )}
                 </p>
                 <div className="flex gap-3">
-                    <button onClick={() => setShowLowBalanceModal(false)} className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-400 hover:text-white transition-colors">Cancel</button>
-                    <NeonButton variant="primary" className="flex-1" onClick={() => setScreen(Screen.WALLET)}>DEPOSIT</NeonButton>
+                    <button onClick={() => setShowLowBalanceModal(false)} className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-400 hover:text-white transition-colors">{translate('Cancel', language)}</button>
+                    <NeonButton variant="primary" className="flex-1" onClick={() => setScreen(Screen.WALLET)}>{translate('Deposit Caps', language)}</NeonButton>
                 </div>
             </div>
         </div>
@@ -507,12 +519,12 @@ const DiceTableScreen: React.FC<DiceTableScreenProps> = ({ user, setUser, setScr
                 <div className="w-16 h-16 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-yellow-500">
                     <AlertTriangle size={32} className="text-yellow-500" />
                 </div>
-                <h3 className="text-white font-title text-xl mb-2">No Bet Placed</h3>
+                <h3 className="text-white font-title text-xl mb-2">{translate('No Bet Placed', language)}</h3>
                 <p className="text-gray-400 text-sm mb-6">
-                    Please select at least one number to place a bet.
+                    {translate('No Bet Msg', language)}
                 </p>
                 <NeonButton variant="secondary" fullWidth onClick={() => setShowNoBetModal(false)}>
-                    OK, I'LL PICK ONE
+                    {translate('Ok Pick', language)}
                 </NeonButton>
             </div>
         </div>

@@ -34,6 +34,18 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     ? Math.round((user.stats.gamesWon / user.stats.gamesPlayed) * 100) 
     : 0;
 
+  // Header Title Mapping
+  const getHeaderTitle = (view: ProfileView) => {
+      switch(view) {
+          case 'MENU': return t('My Profile');
+          case 'EDIT_PROFILE': return t('Edit Profile');
+          case 'CHANGE_PASSWORD': return t('Change Password');
+          case 'LANGUAGE': return t('Language');
+          case 'SOUND': return t('Sound Settings');
+          default: return '';
+      }
+  };
+
   // --- SUB-SCREENS ---
 
   const EditProfileView = () => {
@@ -88,13 +100,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         <Camera size={18} />
                     </div>
                 </div>
-                <p className="text-textMuted text-xs mt-3 uppercase tracking-widest">Tap to change photo</p>
+                <p className="text-textMuted text-xs mt-3 uppercase tracking-widest">{t('Tap to change photo')}</p>
                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
             </div>
 
             <div className="space-y-4 px-2">
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Full Name</label>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">{t('First Name')}</label>
                     <div className="bg-[#151a21] border border-gray-700 rounded-xl flex items-center px-4 focus-within:border-neon transition-colors">
                         <UserIcon size={18} className="text-gray-500" />
                         <input 
@@ -118,7 +130,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 </div>
 
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Phone</label>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">{t('Phone Number')}</label>
                     <div className="bg-[#151a21] border border-gray-700 rounded-xl flex items-center px-4 focus-within:border-neon transition-colors">
                         <Phone size={18} className="text-gray-500" />
                         <input 
@@ -131,7 +143,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </div>
 
             <div className="mt-8">
-                <NeonButton fullWidth onClick={handleSave}>SAVE CHANGES</NeonButton>
+                <NeonButton fullWidth onClick={handleSave}>{t('Save Changes')}</NeonButton>
             </div>
         </div>
     );
@@ -160,9 +172,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
       return (
           <div className="flex flex-col gap-6 pt-4 animate-fade-in-up">
                <div className="bg-panel border border-gray-800 rounded-xl p-6 text-center">
-                    <h3 className="text-white font-bold text-lg mb-2">Audio System</h3>
+                    <h3 className="text-white font-bold text-lg mb-2">{t('Audio System')}</h3>
                     <p className="text-gray-400 text-sm mb-6">
-                        If you are not hearing sounds, please click the button below to authorize audio playback for your browser.
+                        {t('Audio Desc')}
                     </p>
                     
                     <button 
@@ -175,14 +187,14 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         {testPlaying ? <Volume2 size={40} /> : <Play size={40} className="ml-1" />}
                     </button>
                     <p className="text-xs text-gray-500 mt-4 uppercase tracking-widest font-bold">
-                        {testPlaying ? 'PLAYING...' : 'TAP TO TEST'}
+                        {testPlaying ? t('Playing') : t('Tap Test')}
                     </p>
                </div>
 
                <div className="bg-panel border border-gray-800 rounded-xl p-4 flex items-center justify-between">
                    <div className="flex items-center gap-3">
                        <VolumeX size={20} className="text-gray-400" />
-                       <span className="text-sm font-bold text-white">Mute All Sounds</span>
+                       <span className="text-sm font-bold text-white">{t('Mute All')}</span>
                    </div>
                    {/* Toggle Switch */}
                    <button 
@@ -246,7 +258,9 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
             
             <div className="relative z-10 p-6">
                 <div className="flex justify-between items-start mb-6">
-                     <h1 className="font-title text-2xl text-white tracking-wider">MY <span className="text-neon">PROFILE</span></h1>
+                     <h1 className="font-title text-2xl text-white tracking-wider">
+                         {t('My Profile')}
+                     </h1>
                      <div className="flex gap-2">
                         <button onClick={() => setCurrentView('EDIT_PROFILE')} className="p-2 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 text-white transition-colors">
                             <Edit2 size={18} />
@@ -267,7 +281,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         <h2 className="text-2xl font-title text-white mb-1">{user.name}</h2>
                         
                         <div className="flex flex-col items-center gap-1 mb-6">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gold/20 text-gold border border-gold/30">{user.role === 'ADMIN' ? 'ADMIN' : 'VIP PLAYER'}</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-gold/20 text-gold border border-gold/30">{user.role === 'ADMIN' ? 'ADMIN' : t('VIP')}</span>
                             <div className="flex items-center gap-3 mt-1">
                                 <span className="text-textMuted text-xs flex items-center gap-1"><Mail size={10} /> {user.email}</span>
                                 {user.phone && (
@@ -281,21 +295,21 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                 onClick={() => setScreen(Screen.ADMIN)}
                                 className="w-full mb-4 bg-neon/10 border border-neon text-neon font-bold py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-neon hover:text-black transition-all shadow-[0_0_15px_rgba(102,252,241,0.2)]"
                              >
-                                <LayoutDashboard size={18} /> OPEN ADMIN DASHBOARD
+                                <LayoutDashboard size={18} /> {t('Open Admin')}
                              </button>
                         )}
 
                         <div className="grid grid-cols-3 gap-2 w-full">
                             <div className="bg-black/40 rounded-xl p-3 flex flex-col items-center border border-white/5">
-                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Total Games</span>
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('Total Games')}</span>
                                 <span className="font-digital text-xl text-white">{user.stats.gamesPlayed}</span>
                             </div>
                             <div className="bg-black/40 rounded-xl p-3 flex flex-col items-center border border-white/5">
-                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Win Rate</span>
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('Win Rate')}</span>
                                 <span className="font-digital text-xl text-neon">{winRate}%</span>
                             </div>
                             <div className="bg-black/40 rounded-xl p-3 flex flex-col items-center border border-white/5">
-                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">Total Won</span>
+                                <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">{t('Total Won')}</span>
                                 <span className="font-digital text-xl text-gold">{(user.stats.totalWon / 1000).toFixed(1)}k</span>
                             </div>
                         </div>
@@ -307,13 +321,13 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-400 group-hover:scale-110 transition-transform">
                             <Download size={20} />
                         </div>
-                        <span className="text-xs font-bold text-gray-300">Deposit</span>
+                        <span className="text-xs font-bold text-gray-300">{t('Deposit')}</span>
                     </button>
                     <button onClick={() => setScreen(Screen.WALLET)} className="bg-panel border border-gray-800 p-4 rounded-2xl flex flex-col items-center gap-2 hover:bg-white/5 transition-colors group">
                          <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 group-hover:scale-110 transition-transform">
                             <Upload size={20} />
                         </div>
-                        <span className="text-xs font-bold text-gray-300">Withdraw</span>
+                        <span className="text-xs font-bold text-gray-300">{t('Withdraw')}</span>
                     </button>
                 </div>
 
@@ -322,28 +336,28 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     <button onClick={() => setScreen(Screen.HISTORY)} className="w-full flex items-center justify-between p-4 border-b border-gray-800 hover:bg-white/5">
                          <div className="flex items-center gap-3">
                             <Activity size={18} className="text-blue-400" />
-                            <span className="text-sm font-bold text-white">Game History</span>
+                            <span className="text-sm font-bold text-white">{t('Recent History')}</span>
                          </div>
                          <ChevronRight size={16} className="text-gray-600" />
                     </button>
                     <button onClick={() => setCurrentView('CHANGE_PASSWORD')} className="w-full flex items-center justify-between p-4 border-b border-gray-800 hover:bg-white/5">
                          <div className="flex items-center gap-3">
                             <Lock size={18} className="text-orange-400" />
-                            <span className="text-sm font-bold text-white">Security & Password</span>
+                            <span className="text-sm font-bold text-white">{t('Change Password')}</span>
                          </div>
                          <ChevronRight size={16} className="text-gray-600" />
                     </button>
                     <button onClick={() => setCurrentView('SOUND')} className="w-full flex items-center justify-between p-4 border-b border-gray-800 hover:bg-white/5">
                          <div className="flex items-center gap-3">
                             <Volume2 size={18} className="text-green-400" />
-                            <span className="text-sm font-bold text-white">Sound Settings</span>
+                            <span className="text-sm font-bold text-white">{t('Sound Settings')}</span>
                          </div>
                          <ChevronRight size={16} className="text-gray-600" />
                     </button>
                     <button onClick={() => setCurrentView('LANGUAGE')} className="w-full flex items-center justify-between p-4 hover:bg-white/5">
                          <div className="flex items-center gap-3">
                             <Globe size={18} className="text-purple-400" />
-                            <span className="text-sm font-bold text-white">Language / Langue</span>
+                            <span className="text-sm font-bold text-white">{t('Language')} / Langue</span>
                          </div>
                          <div className="flex items-center gap-2">
                              <span className="text-xs text-gray-500">{language}</span>
@@ -356,7 +370,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     onClick={onLogout}
                     className="w-full py-4 text-danger font-bold text-sm tracking-widest hover:bg-danger/5 rounded-xl transition-colors mb-8"
                 >
-                    LOGOUT
+                    {t('Logout').toUpperCase()}
                 </button>
             </div>
         </div>
@@ -370,7 +384,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 <ChevronLeft size={24} />
             </button>
             <h1 className="font-title text-lg text-white flex-1 text-center pr-10 uppercase tracking-wider">
-                {t(currentView.replace('_', ' '))}
+                {getHeaderTitle(currentView)}
             </h1>
         </div>
         <div className="p-6 h-full flex-1">

@@ -3,13 +3,15 @@ import React, { useState } from 'react';
 import { Screen, User } from '../types';
 import NeonButton from '../components/NeonButton';
 import { ArrowLeft, User as UserIcon, Mail, Phone, Lock } from 'lucide-react';
+import { translate } from '../utils/i18n';
 
 interface RegisterScreenProps {
   setScreen: (screen: Screen) => void;
   onRegister: (user: User) => Promise<boolean>;
+  language?: string;
 }
 
-const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }) => {
+const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister, language = 'English' }) => {
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -18,6 +20,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
     password: ''
   });
   const [isLoading, setIsLoading] = useState(false);
+  const t = (key: string) => translate(key, language);
 
   const isValid = 
     formData.firstName.trim().length > 0 && 
@@ -99,20 +102,20 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
           
           <div className="relative z-10 text-center px-12">
               <h2 className="font-title text-4xl text-white mb-6 leading-tight">
-                  JOIN THE <br/> <span className="text-gold">ELITE CLUB</span>
+                  {t('Join Elite')}
               </h2>
               <p className="text-gray-300 text-lg max-w-md mx-auto">
-                  Experience the ultimate high-stakes dice game. Compete, win, and withdraw instantly.
+                  {t('Register Desc')}
               </p>
               
               <div className="grid grid-cols-2 gap-4 mt-12 max-w-sm mx-auto">
                   <div className="bg-panel/80 p-4 rounded-xl border border-gray-700 backdrop-blur-sm">
                       <p className="text-neon font-digital text-3xl font-bold">10K+</p>
-                      <p className="text-[10px] uppercase text-textMuted tracking-wider">Active Players</p>
+                      <p className="text-[10px] uppercase text-textMuted tracking-wider">{t('Active Players')}</p>
                   </div>
                   <div className="bg-panel/80 p-4 rounded-xl border border-gray-700 backdrop-blur-sm">
                       <p className="text-gold font-digital text-3xl font-bold">24/7</p>
-                      <p className="text-[10px] uppercase text-textMuted tracking-wider">Instant Withdraw</p>
+                      <p className="text-[10px] uppercase text-textMuted tracking-wider">{t('Instant Withdraw')}</p>
                   </div>
               </div>
           </div>
@@ -123,19 +126,19 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
         
         <div className="p-6 md:p-8">
             <button onClick={() => setScreen(Screen.LOGIN)} className="flex items-center text-textMuted hover:text-white transition-colors group">
-                <ArrowLeft size={20} className="mr-2 group-hover:-translate-x-1 transition-transform" /> Back to Login
+                <ArrowLeft size={20} className="mr-2 group-hover:-translate-x-1 transition-transform" /> {t('Back to Login')}
             </button>
         </div>
 
         <div className="flex-1 flex flex-col justify-center px-8 md:px-16 lg:px-24 pb-8">
             <div className="max-w-md mx-auto w-full">
-                <h2 className="font-title text-3xl text-white mb-2">Create Account</h2>
-                <p className="text-textMuted text-sm mb-8">Join the table and start rolling.</p>
+                <h2 className="font-title text-3xl text-white mb-2">{t('Create Account')}</h2>
+                <p className="text-textMuted text-sm mb-8">{t('Join Table')}</p>
 
                 <div className="space-y-4">
                     <div className="flex gap-4">
                         <div className="space-y-2 flex-1">
-                            <label className="text-xs font-bold text-textMuted uppercase ml-1">First Name</label>
+                            <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('First Name')}</label>
                             <input 
                                 name="firstName"
                                 value={formData.firstName}
@@ -146,7 +149,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                             />
                         </div>
                         <div className="space-y-2 flex-1">
-                            <label className="text-xs font-bold text-textMuted uppercase ml-1">Last Name</label>
+                            <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Last Name')}</label>
                             <input 
                                 name="lastName"
                                 value={formData.lastName}
@@ -159,7 +162,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-textMuted uppercase ml-1">Email</label>
+                        <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Email Address')}</label>
                         <div className="relative group">
                             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon transition-colors" size={18} />
                             <input 
@@ -174,7 +177,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-textMuted uppercase ml-1">Phone</label>
+                        <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Phone')}</label>
                         <div className="relative group">
                             <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon transition-colors" size={18} />
                             <input 
@@ -189,7 +192,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-textMuted uppercase ml-1">Password</label>
+                        <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Password')}</label>
                         <div className="relative group">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon transition-colors" size={18} />
                             <input 
@@ -198,14 +201,14 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ setScreen, onRegister }
                                 onChange={handleChange}
                                 type="password" 
                                 className="w-full bg-panel border border-gray-700 rounded-xl py-3 pl-11 pr-4 text-white focus:border-neon focus:shadow-[0_0_10px_rgba(102,252,241,0.2)] focus:outline-none transition-all placeholder:text-gray-600" 
-                                placeholder="Create a strong password" 
+                                placeholder="******" 
                             />
                         </div>
                     </div>
                     
                     <div className="pt-6">
                         <NeonButton fullWidth onClick={handleRegister} disabled={!isValid || isLoading}>
-                            {isLoading ? 'REGISTERING...' : 'REGISTER NOW'}
+                            {isLoading ? t('Registering') : t('Register Now')}
                         </NeonButton>
                     </div>
                 </div>

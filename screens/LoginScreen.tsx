@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Screen, User } from '../types';
 import NeonButton from '../components/NeonButton';
 import { Lock, User as UserIcon, Dices, AlertCircle, X, ChevronRight, ServerOff } from 'lucide-react';
+import { translate } from '../utils/i18n';
 
 interface LoginScreenProps {
   onLogin: (email: string, pass: string) => Promise<boolean>;
@@ -10,12 +11,14 @@ interface LoginScreenProps {
   language?: string;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen, language = 'English' }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [showForgotPass, setShowForgotPass] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const t = (key: string) => translate(key, language);
 
   const isValid = identifier.trim().length > 0 && password.trim().length > 0;
 
@@ -44,20 +47,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
                   <X size={20} />
               </button>
               
-              <h3 className="font-title text-2xl text-white mb-2">Reset Password</h3>
-              <p className="text-sm text-textMuted mb-6">Enter your email address and we'll send you a link to reset your password.</p>
+              <h3 className="font-title text-2xl text-white mb-2">{t('Reset Password')}</h3>
+              <p className="text-sm text-textMuted mb-6">{t('Reset Desc')}</p>
               
               <div className="space-y-4">
                   <div className="space-y-2">
-                      <label className="text-xs font-bold text-textMuted uppercase ml-1">Email Address</label>
+                      <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Email Address')}</label>
                       <input 
                         type="email" 
                         placeholder="john@example.com"
                         className="w-full bg-[#0B0C10] border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-neon outline-none"
                       />
                   </div>
-                  <NeonButton fullWidth onClick={() => { alert("Reset link sent to your email!"); setShowForgotPass(false); }}>
-                      SEND RESET LINK
+                  <NeonButton fullWidth onClick={() => { alert("Reset link sent!"); setShowForgotPass(false); }}>
+                      {t('Send Reset Link')}
                   </NeonButton>
               </div>
           </div>
@@ -81,7 +84,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
                 DICE <span className="text-neon">WORLD</span>
               </h1>
               <p className="text-gold text-xl tracking-widest uppercase font-digital">
-                by Big Size Entertainment
+                {t('By Big Size')}
               </p>
           </div>
        </div>
@@ -97,8 +100,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
           </div>
 
           <div className="max-w-md mx-auto w-full z-10">
-            <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-            <p className="text-textMuted mb-8">Enter your credentials to access your wallet.</p>
+            <h2 className="text-3xl font-bold text-white mb-2">{t('Welcome Back')}</h2>
+            <p className="text-textMuted mb-8">{t('Enter Credentials')}</p>
 
             {error && (
               <div className="mb-6 p-4 bg-danger/10 border border-danger/50 rounded-xl flex items-center gap-3 text-danger animate-fade-in">
@@ -109,21 +112,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
 
             <div className="space-y-6">
               <div className="space-y-2">
-                  <label className="text-xs font-bold text-textMuted uppercase ml-1">Username / Email / Phone</label>
+                  <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Username / Email / Phone')}</label>
                   <div className="relative group">
                       <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon transition-colors" size={20} />
                       <input 
                           type="text" 
                           value={identifier}
                           onChange={(e) => setIdentifier(e.target.value)}
-                          placeholder="Enter your ID"
+                          placeholder={t('Enter ID')}
                           className="w-full bg-panel border border-gray-700 rounded-xl py-4 pl-12 pr-4 text-white focus:border-neon focus:shadow-[0_0_15px_rgba(102,252,241,0.2)] focus:outline-none transition-all placeholder:text-gray-600"
                       />
                   </div>
               </div>
 
               <div className="space-y-2">
-                  <label className="text-xs font-bold text-textMuted uppercase ml-1">Password</label>
+                  <label className="text-xs font-bold text-textMuted uppercase ml-1">{t('Password')}</label>
                   <div className="relative group">
                       <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-neon transition-colors" size={20} />
                       <input 
@@ -139,21 +142,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, setScreen }) => {
 
               <div className="pt-4">
                   <NeonButton fullWidth onClick={handleLogin} disabled={!isValid || isLoading}>
-                      {isLoading ? 'LOGGING IN...' : 'LOGIN'}
+                      {isLoading ? t('Logging In') : t('Login')}
                   </NeonButton>
               </div>
 
               <div className="flex justify-between items-center text-xs mt-4">
                   <button onClick={() => setScreen(Screen.REGISTER)} className="text-white hover:text-neon underline underline-offset-4 transition-colors">
-                      Create Account
+                      {t('Create Account')}
                   </button>
-                  <button onClick={() => setShowForgotPass(true)} className="text-gray-500 hover:text-white transition-colors">Forgot Password?</button>
+                  <button onClick={() => setShowForgotPass(true)} className="text-gray-500 hover:text-white transition-colors">{t('Forgot Password')}</button>
               </div>
             </div>
 
             <div className="mt-8 text-center border-t border-gray-800 pt-6">
                 <p className="text-[10px] text-gray-600">
-                    By logging in, you agree to our Terms of Service.
+                    {t('Terms')}
                 </p>
             </div>
           </div>

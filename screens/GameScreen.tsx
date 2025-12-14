@@ -6,6 +6,7 @@ import NeonButton from '../components/NeonButton';
 import { ChevronLeft, RefreshCw, Plus, Minus, ArrowUpCircle, ArrowDownCircle, Volume2, VolumeX, Percent, Users, Search, Wallet, WifiOff } from 'lucide-react';
 import { audioManager } from '../utils/audio';
 import { gameApi } from '../utils/api';
+import { translate } from '../utils/i18n';
 
 interface GameScreenProps {
   user: User;
@@ -18,6 +19,7 @@ interface GameScreenProps {
   setScreen: (screen: Screen) => void;
   commissionRate: number;
   isOnline?: boolean;
+  language?: string;
 }
 
 // RULES IMPLEMENTATION:
@@ -28,7 +30,7 @@ const isDuelMode = (count: number) => count >= 3;
 const BOT_NAMES = ['NeonKing', 'SpeedRoller', 'LuckyStrike', 'CyberWolf', 'DiceMaster', 'Viper', 'Ghost', 'ZeroCool'];
 
 const GameScreen: React.FC<GameScreenProps> = ({ 
-    user, setUser, betAmount, setBetAmount, playerCount, setPlayerCount, addHistory, setScreen, commissionRate, isOnline = true 
+    user, setUser, betAmount, setBetAmount, playerCount, setPlayerCount, addHistory, setScreen, commissionRate, isOnline = true, language = 'English' 
 }) => {
   const [gameState, setGameState] = useState<'READY' | 'MATCHING' | 'ROLLING' | 'RESULT'>('READY');
   const [isMuted, setIsMuted] = useState(audioManager.isMuted());
@@ -49,6 +51,8 @@ const GameScreen: React.FC<GameScreenProps> = ({
     netAmount: number;
     feePaid: number;
   }>({ left: null, right: null, netAmount: 0, feePaid: 0 });
+
+  const t = (key: string) => translate(key, language);
 
   // Refs for animation
   const animationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -124,12 +128,17 @@ const GameScreen: React.FC<GameScreenProps> = ({
     setGameState('ROLLING');
     audioManager.play('ROLL');
     
-    // Deduct total bet immediately (Escrow)
+    // Deduct total bet immediately (Escrow) and Update Wager Stats
     setUser(prev => ({ 
         ...prev, 
         wallet: {
             ...prev.wallet,
             balance: prev.wallet.balance - totalBetRequired
+        },
+        stats: {
+            ...prev.stats,
+            gamesPlayed: prev.stats.gamesPlayed + 1,
+            totalWagered: prev.stats.totalWagered + totalBetRequired
         }
     }));
 
@@ -150,9 +159,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
     if (isOnline) {
         // --- ONLINE API MODE ---
         try {
-            // Construct Payload for API
-            // Note: The API takes an array of players. Since we don't have real matchmaking yet,
-            // we send the user + dummy bots to the API, so the API calculates dice for everyone.
             const playersPayload = [
                 { uid: user.id, displayName: user.name }, // Me
                 { uid: 'bot-1', displayName: leftOpponent } // Bot 1
@@ -163,14 +169,12 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
             const apiResponse = await gameApi.rollDice(playersPayload);
             
-            // Wait a minimum time for animation
             await new Promise(resolve => setTimeout(resolve, 1500));
 
             if (Array.isArray(apiResponse)) {
                 // Extract My Result
                 const myResult = apiResponse.find((r: any) => r.uid === user.id);
                 const myRoll = myResult ? myResult.rollDiceResult : 2;
-                // Split single API result into 2 dice for visuals (e.g. 7 -> 3+4)
                 setMyDice(splitDice(myRoll));
                 myTotal = myRoll;
 
@@ -194,7 +198,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
         } catch (e) {
             console.error("Online Play Failed", e);
             alert("Connection lost. Switching to offline mode for this roll.");
-            // Fallback to local
             ({ myTotal, leftTotal, rightTotal } = runLocalSimulation());
         }
     } else {
@@ -203,15 +206,11 @@ const GameScreen: React.FC<GameScreenProps> = ({
         ({ myTotal, leftTotal, rightTotal } = runLocalSimulation());
     }
 
-    // Stop Animation
     if (animationInterval.current) clearInterval(animationInterval.current);
-    
-    // Calculate Financials & State
     calculateAndFinalize(myTotal, leftTotal, rightTotal);
   };
 
   const splitDice = (total: number): [number, number] => {
-      // Helper to make visuals match the total
       if (total <= 2) return [1, 1];
       if (total >= 12) return [6, 6];
       const d1 = Math.floor(total / 2);
@@ -244,20 +243,17 @@ const GameScreen: React.FC<GameScreenProps> = ({
   };
 
   const calculateAndFinalize = (myTotal: number, leftTotal: number, rightTotal: number) => {
-    // Determine Winners & Commission
     let grossWinnings = 0;
     let totalFee = 0;
     let leftResult: 'WIN' | 'LOSS' | 'DRAW' = 'LOSS';
     let rightResult: 'WIN' | 'LOSS' | 'DRAW' | null = null;
 
-    // Helper to calculate win with commission
     const calculateWin = (bet: number) => {
-        const pot = bet * 2; // My bet + Opponent bet
+        const pot = bet * 2; 
         const fee = Math.floor(pot * (commissionRate / 100));
         return { payout: pot - fee, fee };
     };
 
-    // Duel 1: Left Rival
     if (myTotal > leftTotal) {
         leftResult = 'WIN';
         const win = calculateWin(betAmount);
@@ -265,10 +261,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
         totalFee += win.fee;
     } else if (myTotal === leftTotal) {
         leftResult = 'DRAW';
-        grossWinnings += betAmount; // Refund, no commission on draw
+        grossWinnings += betAmount; 
     } 
 
-    // Duel 2: Right Rival
     if (isDuelMode(playerCount)) {
         if (myTotal > rightTotal) {
             rightResult = 'WIN';
@@ -281,21 +276,26 @@ const GameScreen: React.FC<GameScreenProps> = ({
         }
     }
 
-    // Update Balance
+    const netWin = grossWinnings - totalBetRequired;
+    const isWin = netWin > 0;
+
+    // Update Balance & Stats (Win Stats Only)
     setUser(prev => ({ 
         ...prev, 
         wallet: {
             ...prev.wallet,
             balance: prev.wallet.balance + grossWinnings
+        },
+        stats: {
+            ...prev.stats,
+            gamesWon: isWin ? prev.stats.gamesWon + 1 : prev.stats.gamesWon,
+            totalWon: prev.stats.totalWon + grossWinnings
         }
     }));
 
-    // Calculate Net Result (Total Payout - Total Initial Bet)
-    const netWin = grossWinnings - totalBetRequired;
     setDuelResults({ left: leftResult, right: rightResult, netAmount: netWin, feePaid: totalFee });
     setGameState('RESULT');
 
-    // Play Sound Result
     if (netWin > 0) {
         audioManager.play('WIN');
     } else if (netWin < 0) {
@@ -307,7 +307,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
       date: new Date().toLocaleTimeString(),
       betAmount: totalBetRequired,
       userScore: myTotal,
-      opponentScore: leftTotal, // In duel mode, this primarily tracks left opponent for basic history
+      opponentScore: leftTotal,
       result: netWin > 0 ? 'WIN' : netWin < 0 ? 'LOSS' : 'DRAW'
     });
   };
@@ -348,7 +348,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
           <ChevronLeft size={24} />
         </button>
         <div className="flex flex-col items-center">
-             <span className="text-[10px] text-textMuted uppercase tracking-widest font-bold">Total Wager</span>
+             <span className="text-[10px] text-textMuted uppercase tracking-widest font-bold">{t('Total Wager')}</span>
              <span className="font-digital text-neon text-lg font-bold tracking-wider drop-shadow-md leading-none">
                 {totalBetRequired.toLocaleString()}
              </span>
@@ -373,7 +373,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                 <div className="flex flex-col items-center gap-2 relative">
                     {gameState === 'RESULT' && renderBadge(duelResults.left)}
                     <span className={`text-[9px] sm:text-[10px] tracking-[0.2em] uppercase font-bold ${getResultColor(duelResults.left)}`}>
-                        {gameState !== 'READY' ? leftOpponent : (isDuelMode(playerCount) ? 'Player 2' : 'Opponent')}
+                        {gameState !== 'READY' ? leftOpponent : (isDuelMode(playerCount) ? `${t('Player')} 2` : t('Opponent'))}
                     </span>
                     <div className="flex gap-2 bg-black/30 p-2 rounded-xl border border-white/5 relative z-10">
                         <Dice value={leftDice[0]} isRolling={gameState === 'ROLLING'} color="danger" size="sm" />
@@ -389,7 +389,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     <div className="flex flex-col items-center gap-2 relative">
                         {gameState === 'RESULT' && renderBadge(duelResults.right)}
                         <span className={`text-[9px] sm:text-[10px] tracking-[0.2em] uppercase font-bold ${getResultColor(duelResults.right)}`}>
-                            {gameState !== 'READY' ? rightOpponent : 'Player 3'}
+                            {gameState !== 'READY' ? rightOpponent : `${t('Player')} 3`}
                         </span>
                         <div className="flex gap-2 bg-black/30 p-2 rounded-xl border border-white/5 relative z-10">
                             <Dice value={rightDice[0]} isRolling={gameState === 'ROLLING'} color="danger" size="sm" />
@@ -429,7 +429,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
             <div className="flex justify-between items-end gap-2 mb-4">
                 {/* Player Count */}
                 <div className="flex flex-col gap-1 sm:gap-2 flex-1">
-                    <span className="text-[9px] sm:text-[10px] text-textMuted uppercase tracking-widest font-bold ml-1">Table Size</span>
+                    <span className="text-[9px] sm:text-[10px] text-textMuted uppercase tracking-widest font-bold ml-1">{t('Table Size')}</span>
                     <div className="flex bg-panel border border-gray-700 rounded-lg p-1 gap-1 justify-between">
                         {[2, 3, 4, 5].map(count => (
                             <button
@@ -449,7 +449,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
                 {/* Bet Control */}
                 <div className="flex flex-col gap-1 sm:gap-2 items-end">
-                    <span className="text-[9px] sm:text-[10px] text-textMuted uppercase tracking-widest font-bold mr-1">Bet Amount (CFA)</span>
+                    <span className="text-[9px] sm:text-[10px] text-textMuted uppercase tracking-widest font-bold mr-1">{t('Select Amount')} (CFA)</span>
                     <div className="flex flex-col items-end">
                         <div className="flex items-center gap-1 sm:gap-2 bg-panel border border-gray-700 rounded-lg p-1">
                             <button 
@@ -484,31 +484,31 @@ const GameScreen: React.FC<GameScreenProps> = ({
             {gameState === 'READY' ? (
                 <div className="animate-fade-in-up h-full">
                     <NeonButton fullWidth onClick={handleStartGame} className="h-full text-base sm:text-lg shadow-[0_0_15px_rgba(102,252,241,0.3)]">
-                        ROLL ({playerCount > 2 ? '2 DUELS' : '1 VS 1'})
+                        {t('Roll Action')} ({playerCount > 2 ? `2 ${t('Duels')}` : '1 VS 1'})
                     </NeonButton>
                 </div>
             ) : gameState === 'MATCHING' ? (
                  <div className="text-center h-full flex items-center justify-center bg-black/20 rounded-xl border border-neon/20 gap-3">
                     <div className="animate-spin text-neon"><Search size={20} /></div>
-                    <span className="text-neon font-title text-lg sm:text-xl tracking-widest animate-pulse">FINDING PLAYERS...</span>
+                    <span className="text-neon font-title text-lg sm:text-xl tracking-widest animate-pulse">{t('Finding Players')}</span>
                 </div>
             ) : gameState === 'ROLLING' ? (
                 <div className="text-center h-full flex items-center justify-center bg-black/20 rounded-xl border border-neon/20">
-                    <span className="text-neon animate-pulse font-title text-lg sm:text-xl tracking-widest">ROLLING...</span>
+                    <span className="text-neon animate-pulse font-title text-lg sm:text-xl tracking-widest">{t('Rolling')}</span>
                 </div>
             ) : (
                 <div className="flex gap-2 h-full animate-fade-in-up">
                     <div className={`flex flex-col px-3 justify-center items-center rounded-xl border backdrop-blur-sm min-w-[100px] ${
                         duelResults.netAmount > 0 ? 'bg-gold/10 border-gold/50 shadow-[0_0_20px_rgba(255,215,0,0.2)]' : 'bg-black/40 border-white/5'
                     }`}>
-                        <p className="text-[9px] uppercase tracking-widest text-textMuted leading-none mb-1">Result</p>
+                        <p className="text-[9px] uppercase tracking-widest text-textMuted leading-none mb-1">{t('Result')}</p>
                         <span className={`text-2xl font-title leading-none ${duelResults.netAmount > 0 ? 'text-gold' : duelResults.netAmount < 0 ? 'text-danger' : 'text-white'}`}>
                             {duelResults.netAmount > 0 ? `+${duelResults.netAmount.toLocaleString()}` : duelResults.netAmount.toLocaleString()}
                         </span>
                         {/* Show fee if won */}
                         {duelResults.feePaid > 0 && (
                             <span className="text-[9px] text-red-400 mt-1 flex items-center">
-                                <Percent size={8} className="mr-0.5" /> House Fee: {duelResults.feePaid}
+                                <Percent size={8} className="mr-0.5" /> {t('House Fee')}: {duelResults.feePaid}
                             </span>
                         )}
                     </div>
@@ -524,7 +524,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
                     <div className="flex-1">
                         <NeonButton fullWidth variant={duelResults.netAmount > 0 ? 'gold' : 'secondary'} onClick={resetGame} className="h-full">
-                            <RefreshCw className="mr-2" /> AGAIN
+                            <RefreshCw className="mr-2" /> {t('Again')}
                         </NeonButton>
                     </div>
                 </div>
@@ -539,24 +539,24 @@ const GameScreen: React.FC<GameScreenProps> = ({
                 <div className="w-16 h-16 bg-danger/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-danger">
                     <Wallet size={32} className="text-danger" />
                 </div>
-                <h3 className="text-white font-title text-xl mb-2">Insufficient Funds</h3>
+                <h3 className="text-white font-title text-xl mb-2">{t('Insufficient Funds')}</h3>
                 <p className="text-gray-400 text-sm mb-6">
-                    You need at least <span className="text-white font-bold">{totalBetRequired.toLocaleString()} CFA</span> to roll.
-                    <br/>Your Balance: <span className="text-danger font-digital">{user.wallet.balance.toLocaleString()} CFA</span>
+                    {t('Insuff Funds Desc').replace('{amount}', totalBetRequired.toLocaleString())}
+                    <br/>{t('Your Balance')}: <span className="text-danger font-digital">{user.wallet.balance.toLocaleString()} CFA</span>
                 </p>
                 <div className="flex gap-3">
                     <button 
                         onClick={() => setShowLowBalanceModal(false)}
                         className="flex-1 py-3 rounded-xl border border-gray-700 text-gray-400 hover:text-white transition-colors"
                     >
-                        Cancel
+                        {t('Cancel')}
                     </button>
                     <NeonButton 
                         variant="primary" 
                         className="flex-1"
                         onClick={() => setScreen(Screen.WALLET)}
                     >
-                        DEPOSIT NOW
+                        {t('Deposit Caps')}
                     </NeonButton>
                 </div>
             </div>

@@ -8,6 +8,7 @@ import {
     Smartphone, CreditCard, X, ChevronLeft,
     Loader2, Check, AlertTriangle, ChevronRight, Globe, Landmark, Crown
 } from 'lucide-react';
+import { translate } from '../utils/i18n';
 
 interface WalletScreenProps {
   user: User;
@@ -16,15 +17,18 @@ interface WalletScreenProps {
   transactions: Transaction[];
   addTransaction: (tx: Transaction) => void;
   returnScreen?: Screen;
+  language?: string;
 }
 
-const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, transactions, addTransaction, returnScreen }) => {
+const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, transactions, addTransaction, returnScreen, language = 'English' }) => {
   const [view, setView] = useState<'MAIN' | 'DEPOSIT_METHODS' | 'WITHDRAW_METHODS'>('MAIN');
   const [selectedMethodId, setSelectedMethodId] = useState<string | null>(null);
   const [amount, setAmount] = useState<string>('');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [processingState, setProcessingState] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS'>('IDLE');
   const [amountMode, setAmountMode] = useState<'STD' | 'VIP'>('STD');
+  
+  const t = (key: string) => translate(key, language);
 
   // Validation States
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -82,12 +86,12 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
       if (view === 'WITHDRAW_METHODS') {
           // Rule 1: Min Amount 1000
           if (numAmount < 1000) {
-              alert("Minimum withdrawal amount is 1,000 CFA.");
+              alert(t('Min Withdraw Msg'));
               return;
           }
           // Rule 2: Insufficient Funds
           if (user.wallet.balance < numAmount) {
-              alert("Insufficient funds.");
+              alert(t('Insufficient Funds'));
               return;
           }
           // Rule 3: Frequency Limit (3x Week)
@@ -172,7 +176,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                 <ChevronLeft size={24} />
             </button>
             <h1 className="font-title text-white text-lg tracking-wider">
-                {view === 'MAIN' ? 'MY WALLET' : isDepositView ? 'DEPOSIT FUNDS' : 'WITHDRAW FUNDS'}
+                {view === 'MAIN' ? t('My Wallet') : isDepositView ? t('Deposit Funds') : t('Withdraw Funds')}
             </h1>
         </div>
 
@@ -182,7 +186,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                 <div className="space-y-6 animate-fade-in">
                     <div className="bg-gradient-to-br from-[#1F2833] to-black p-6 rounded-3xl relative overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.5)] border border-gray-800">
                             <div className="relative z-10 flex flex-col items-center py-4">
-                                <span className="text-gray-400 font-bold uppercase tracking-wider text-xs mb-2">Available Balance</span>
+                                <span className="text-gray-400 font-bold uppercase tracking-wider text-xs mb-2">{t('Available Balance')}</span>
                                 <h2 className="text-5xl font-digital text-white font-black tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
                                     {user.wallet.balance.toLocaleString()} <span className="text-2xl text-gray-500">CFA</span>
                                 </h2>
@@ -192,26 +196,26 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                     <div className="flex items-center gap-2 p-3 bg-blue-900/10 border border-blue-500/20 rounded-xl">
                         <AlertTriangle className="text-blue-400" size={20} />
                         <div>
-                            <p className="text-[10px] text-blue-300 font-bold uppercase">Withdrawal Limit</p>
-                            <p className="text-xs text-gray-400">Min 1,000 CFA • Max 3x per week ({user.withdrawalLimits.countThisWeek}/3 used)</p>
+                            <p className="text-[10px] text-blue-300 font-bold uppercase">{t('Withdrawal Limit')}</p>
+                            <p className="text-xs text-gray-400">{t('Withdrawal Limit Details')} ({user.withdrawalLimits.countThisWeek}/3 used)</p>
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <button onClick={() => setView('DEPOSIT_METHODS')} className="group relative overflow-hidden bg-green-500/10 border border-green-500/30 hover:bg-green-500/20 p-6 rounded-2xl transition-all duration-300 flex flex-col items-center gap-3">
                             <div className="p-3 bg-green-500 rounded-full text-black shadow-lg shadow-green-500/20 group-hover:scale-110 transition-transform"><ArrowDown size={28} strokeWidth={3} /></div>
-                            <div><h3 className="font-title text-green-400 text-lg">DEPOSIT</h3></div>
+                            <div><h3 className="font-title text-green-400 text-lg">{t('Deposit Caps')}</h3></div>
                         </button>
 
                         <button onClick={() => setView('WITHDRAW_METHODS')} className="group relative overflow-hidden bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 p-6 rounded-2xl transition-all duration-300 flex flex-col items-center gap-3">
                             <div className="p-3 bg-red-500 rounded-full text-white shadow-lg shadow-red-500/20 group-hover:scale-110 transition-transform"><ArrowUp size={28} strokeWidth={3} /></div>
-                            <div><h3 className="font-title text-red-400 text-lg">WITHDRAW</h3></div>
+                            <div><h3 className="font-title text-red-400 text-lg">{t('Withdraw').toUpperCase()}</h3></div>
                         </button>
                     </div>
 
                     <div>
                         <div className="flex justify-between items-center mb-4 mt-4">
-                            <h3 className="font-title text-white italic text-lg">RECENT HISTORY</h3>
+                            <h3 className="font-title text-white italic text-lg">{t('Recent History')}</h3>
                         </div>
                         <div className="space-y-3">
                             {transactions.slice(0, 3).map((tx) => (
@@ -221,7 +225,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                                             {tx.type === 'DEPOSIT' ? <ArrowDown size={20} /> : <ArrowUp size={20} />}
                                         </div>
                                         <div>
-                                            <p className="text-sm font-bold text-white uppercase">{tx.type === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'}</p>
+                                            <p className="text-sm font-bold text-white uppercase">{tx.type === 'DEPOSIT' ? t('Deposit') : t('Withdraw')}</p>
                                             <p className="text-[10px] text-gray-500">{tx.date}</p>
                                         </div>
                                     </div>
@@ -230,7 +234,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                                     </span>
                                 </div>
                             ))}
-                            {transactions.length === 0 && <div className="text-center py-8 text-gray-600 text-xs uppercase tracking-widest">No Transactions Yet</div>}
+                            {transactions.length === 0 && <div className="text-center py-8 text-gray-600 text-xs uppercase tracking-widest">{t('No Transactions Yet')}</div>}
                         </div>
                     </div>
                 </div>
@@ -239,12 +243,12 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
             {(view === 'DEPOSIT_METHODS' || view === 'WITHDRAW_METHODS') && (
                 <div className="space-y-6 animate-fade-in-up">
                     <div className="bg-[#151a21] p-6 rounded-2xl border border-gray-700">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Amount (CFA)</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">{t('Amount (CFA)')}</label>
                         <input 
                             type="number" 
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            placeholder={isDepositView ? "Min 100" : "Min 1000"}
+                            placeholder={isDepositView ? t('Min 100') : t('Min 1000')}
                             className="w-full bg-black/40 border border-gray-600 rounded-xl py-4 px-4 text-white font-digital text-3xl focus:border-neon focus:outline-none"
                         />
                         
@@ -253,7 +257,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                                 onClick={() => setAmountMode('STD')} 
                                 className={`flex-1 py-2 text-[10px] font-bold uppercase rounded-md transition-all ${amountMode === 'STD' ? 'bg-gray-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
                             >
-                                Standard
+                                {t('Standard')}
                             </button>
                             <button 
                                 onClick={() => setAmountMode('VIP')} 
@@ -281,7 +285,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                             ))}
                         </div>
                         {!isDepositView && (
-                             <p className="text-[10px] text-red-400 mt-2 flex items-center gap-1"><AlertTriangle size={10}/> Minimum withdrawal is 1,000 CFA</p>
+                             <p className="text-[10px] text-red-400 mt-2 flex items-center gap-1"><AlertTriangle size={10}/> {t('Min Withdraw Msg')}</p>
                         )}
                     </div>
 
@@ -292,7 +296,7 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                                     <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-black/20 ${method.color}`}>{method.icon}</div>
                                     <div className="text-left">
                                         <h4 className={`font-bold text-sm ${method.color}`}>{method.name}</h4>
-                                        <p className="text-[10px] text-gray-400 uppercase tracking-wider">Instant</p>
+                                        <p className="text-[10px] text-gray-400 uppercase tracking-wider">{t('Instant')}</p>
                                     </div>
                                 </div>
                                 <ChevronRight className="text-gray-500 group-hover:text-white" />
@@ -313,28 +317,28 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                                     <Check size={48} className="text-green-500" />
                                 </div>
                                 <div>
-                                    <h3 className="text-2xl font-title text-white mb-2">Success!</h3>
-                                    <p className="text-gray-400 text-sm">Transaction completed.</p>
-                                    <p className="text-neon font-digital text-xl mt-2">New Balance: {(isDepositView ? user.wallet.balance + Number(amount) : user.wallet.balance - Number(amount)).toLocaleString()} CFA</p>
+                                    <h3 className="text-2xl font-title text-white mb-2">{t('Success')}</h3>
+                                    <p className="text-gray-400 text-sm">{t('Transaction Completed')}</p>
+                                    <p className="text-neon font-digital text-xl mt-2">{t('New Balance')}: {(isDepositView ? user.wallet.balance + Number(amount) : user.wallet.balance - Number(amount)).toLocaleString()} CFA</p>
                                 </div>
-                                <NeonButton fullWidth onClick={resetAll}>DONE</NeonButton>
+                                <NeonButton fullWidth onClick={resetAll}>{t('Done')}</NeonButton>
                             </div>
                     ) : (
                         <div className="p-6 space-y-4">
                              <div className="flex justify-between items-center mb-2">
-                                <h3 className="font-bold text-white text-lg">Confirm {isDepositView ? 'Deposit' : 'Withdrawal'}</h3>
+                                <h3 className="font-bold text-white text-lg">{t('Confirm')} {isDepositView ? t('Deposit') : t('Withdraw')}</h3>
                                 {processingState === 'IDLE' && <button onClick={() => setShowPaymentModal(false)}><X className="text-gray-500 hover:text-white"/></button>}
                             </div>
                             
                             <div className="p-4 bg-black/40 rounded-xl border border-gray-800 text-center">
-                                <p className="text-gray-500 text-xs uppercase mb-1">Total Amount</p>
+                                <p className="text-gray-500 text-xs uppercase mb-1">{t('Total Wager').replace('Wager', 'Amount')}</p>
                                 <p className="text-2xl font-digital text-white font-bold">{Number(amount).toLocaleString()} CFA</p>
                             </div>
 
                             {isCardMethod ? (
                                 <div className="space-y-3">
-                                    <input placeholder="Card Name" value={cardName} onChange={e => setCardName(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
-                                    <input placeholder="Card Number" value={cardNumber} onChange={e => setCardNumber(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
+                                    <input placeholder={t('Card Name')} value={cardName} onChange={e => setCardName(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
+                                    <input placeholder={t('Card Number')} value={cardNumber} onChange={e => setCardNumber(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
                                     <div className="grid grid-cols-2 gap-3">
                                         <input placeholder="MM/YY" value={expiry} onChange={e => setExpiry(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
                                         <input placeholder="CVC" value={cvc} onChange={e => setCvc(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
@@ -342,12 +346,12 @@ const WalletScreen: React.FC<WalletScreenProps> = ({ user, setScreen, setUser, t
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    <input placeholder="Mobile Number" value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
+                                    <input placeholder={t('Mobile Number')} value={mobileNumber} onChange={e => setMobileNumber(e.target.value)} className="w-full bg-black/20 border border-gray-700 rounded-lg p-3 text-white"/>
                                 </div>
                             )}
 
                             <NeonButton fullWidth onClick={processTransaction} disabled={processingState === 'PROCESSING'} variant={isDepositView ? 'primary' : 'danger'}>
-                                {processingState === 'PROCESSING' ? <span className="flex gap-2"><Loader2 className="animate-spin"/> Processing...</span> : 'CONFIRM'}
+                                {processingState === 'PROCESSING' ? <span className="flex gap-2"><Loader2 className="animate-spin"/> {t('Processing')}</span> : t('Confirm').toUpperCase()}
                             </NeonButton>
                         </div>
                     )}
